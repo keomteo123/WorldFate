@@ -1915,43 +1915,117 @@
     requestAnimationFrame(gameLoop);
   }
 
-  let pointerId = null;
+   // --- PC & 모바일 하이브리드 입력 및 멀티터치 줌 변수 ---
+  let activePointers = [];    // 현재 화면을 터치 중인 모든 포인터 배열
+  let initialTouchDist = -1;  // 두 손가락이 처음 닿았을 때의 거리
+  let initialZoom = 1;        // 두 손가락이 처음 닿았을 때의 카메라 줌 값
   let lastPointer = { x: 0, y: 0 };
+  let isDistanceZooming = false; // 현재 핀치 줌(확대/축소) 작동 여부
 
+  // 1. 포인터 다운 (마우스 클릭 또는 손가락 터치 시작)
   canvas.addEventListener('pointerdown', e => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    pointerId = e.pointerId;
+    if (e.pointerType === 'mouse' && e.button !== 0) return; // 마우스 우클릭 등은 무시
+    
+    activePointers.push(e); // 현재 포인터 등록
     dragging = true;
-    dragX = e.clientX;
-    dragY = e.clientY;
-    lastPointer.x = e.clientX;
-    lastPointer.y = e.clientY;
-    canvas.classList.add('dragging');
+    
+    if (activePointers.length === 1) {
+      dragX = e.clientX;
+      dragY = e.clientY;
+      lastPointer.x = e.clientX;
+      lastPointer.y = e.clientY;
+      canvas.classList.add('dragging');
+    } else if (activePointers.length === 2) {
+      // 모바일에서 두 손가락이 닿으면 지도 이동(드래그)을 멈추고 줌 모드로 전환
+      isDistanceZooming = true;
+      const dx = activePointers[0].clientX - activePointers[1].clientX;
+      const dy = activePointers[0].clientY - activePointers[1].clientY;
+      initialTouchDist = Math.hypot(dx, dy);
+      initialZoom = camera.zoom;
+    }
+    
     canvas.setPointerCapture?.(e.pointerId);
   });
 
-  window.addEventListener('pointerup', e => {
-    if (pointerId !== null && e.pointerId !== pointerId) return;
-    dragging = false;
-    pointerId = null;
-    canvas.classList.remove('dragging');
-    if (Math.abs(e.clientX - dragX) <= 8 && Math.abs(e.clientY - dragY) <= 8) {
-      selectAt(e.clientX, e.clientY);
+  // 2. 포인터 이동 (마우스 드래그 또는 손가락 움직임 / 핀치 줌)
+  window.addEventListener('pointermove', e => {
+    const pIdx = activePointers.findIndex(p => p.pointerId === e.pointerId);
+    if (pIdx < 0) return;
+    activePointers[pIdx] = e; // 실시간 포인터 좌표 갱신
+
+    if (!dragging) return;
+
+    if (activePointers.length === 1 && !isDistanceZooming) {
+      // [단일 포인터] PC 마우스 드래그 또는 모바일 한 손가락 지도 이동
+      const dx = e.clientX - dragX;
+      const dy = e.clientY - dragY;
+      camera.x += dx;
+      camera.y += dy;
+      dragX = e.clientX;
+      dragY = e.clientY;
+      lastPointer.x = e.clientX;
+      lastPointer.y = e.clientY;
+    } else if (activePointers.length === 2 && isDistanceZooming) {
+      // [멀티 포인터] 모바일 두 손가락 확대 / 축소 (Pinch-to-Zoom)
+      const dx = activePointers[0].clientX - activePointers[1].clientX;
+      const dy = activePointers[0].clientY - activePointers[1].clientY;
+      const currentDist = Math.hypot(dx, dy);
+
+      if (initialTouchDist > 0 && currentDist > 0) {
+        // 두 손가락의 중심점(터치 타겟 센터)을 계산하여 그 지점을 기준으로 확대/축소
+        const midX = (activePointers[0].clientX + activePointers[1].clientX) / 2;
+        const midY = (activePointers[0].clientY + activePointers[1].clientY) / 2;
+        
+        const oldZoom = camera.zoom;
+        const factor = currentDist / initialTouchDist;
+        
+        const worldX = (midX - camera.x) / oldZoom;
+        const worldY = (midY - camera.y) / oldZoom;
+
+        camera.zoom = clamp(initialZoom * factor, 0.35, 8); // 줌 제한 범위 준수
+        camera.x = midX - worldX * camera.zoom;
+        camera.y = midY - worldY * camera.zoom;
+      }
     }
   });
 
-  window.addEventListener('pointermove', e => {
-    if (!dragging || (pointerId !== null && e.pointerId !== pointerId)) return;
-    const dx = e.clientX - dragX;
-    const dy = e.clientY - dragY;
-    camera.x += dx;
-    camera.y += dy;
-    dragX = e.clientX;
-    dragY = e.clientY;
-    lastPointer.x = e.clientX;
-    lastPointer.y = e.clientY;
+  // 3. 포인터 떼기 (클릭 해제 또는 손가락 떨어짐)
+  window.addEventListener('pointerup', e => {
+    const pIdx = activePointers.findIndex(p => p.pointerId === e.pointerId);
+    if (pIdx >= 0) activePointers.splice(pIdx, 1);
+
+    if (activePointers.length === 0) {
+      dragging = false;
+      canvas.classList.remove('dragging');
+      
+      // 확대/축소 중이 아니었고, 터치가 이동한 거리가 짧았다면 단순 클릭(국가 선택)으로 간주
+      if (!isDistanceZooming && Math.abs(e.clientX - dragX) <= 8 && Math.abs(e.clientY - dragY) <= 8) {
+        const i = screenToCell(e.clientX, e.clientY);
+        if (i < 0 || owner[i] < 0) {
+          selected = -1;
+          updateUI();
+        } else {
+          selectAt(e.clientX, e.clientY);
+        }
+      }
+      isDistanceZooming = false;
+      initialTouchDist = -1;
+    } else if (activePointers.length === 1) {
+      // 두 손가락 중 하나만 떼었을 때 잔여 드래그 좌표 보정
+      isDistanceZooming = false;
+      dragX = activePointers[0].clientX;
+      dragY = activePointers[0].clientY;
+    }
   });
 
+  window.addEventListener('pointercancel', e => {
+    activePointers = [];
+    dragging = false;
+    isDistanceZooming = false;
+    canvas.classList.remove('dragging');
+  });
+
+  // 4. PC용 마우스 휠 확대/축소 이벤트 (기존과 동일하게 유지)
   canvas.addEventListener('wheel', e => {
     e.preventDefault();
     const oldZoom = camera.zoom;
@@ -1964,6 +2038,7 @@
     camera.x = mouseX - worldX * camera.zoom;
     camera.y = mouseY - worldY * camera.zoom;
   }, { passive: false });
+
 
   window.addEventListener('resize', () => {
     W = innerWidth;
