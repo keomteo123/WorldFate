@@ -190,3 +190,42 @@ button.active {
   z-index: 5;
   pointer-events: none;
 }
+* { box-sizing: border-box; }
+:root {
+  --ink: #edf4f7;
+  --muted: #9eabb3;
+  --panel: rgba(18, 25, 30, .92);
+  --panel-deep: rgba(10, 16, 21, .96);
+  --line: rgba(206, 177, 104, .34);
+  --gold: #e6c56d;
+  --gold-bright: #ffe6a0;
+  --blue: #75b7df;
+}
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #070b0e;
+  color: var(--ink);
+  font-family: Georgia, "Noto Serif KR", "Malgun Gothic", serif;
+}
+body { user-select: none; }
+#game {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% -15%, rgba(98, 130, 150, .25), transparent 50%),
+    radial-gradient(ellipse at 50% 115%, rgba(10, 20, 30, .6), transparent 50%);
+}
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+canvas.dragging {
+  cursor: grabbing;
+}
+/* 패널 및 UI 스타일 설정이 이어서 들어가야 합니다 */
