@@ -182,3 +182,8 @@ h4 { margin: 16px 0 8px; color: #bac5c5; font-size: 11px; letter-spacing: 1.3px;
   #stats { display: none; }
   #help { bottom: 10px; width: calc(100% - 24px); text-align: center; }
 }
+#mapOverlay{
+  background: transparent;
+  z-index: 5;
+  pointer-events: none;
+}
