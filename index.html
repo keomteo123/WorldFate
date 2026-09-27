@@ -10,22 +10,27 @@
 <div id="game">
   <canvas id="canvas"></canvas>
   <canvas id="mapOverlay"></canvas>
-
-  <div id="top">
+<div id="top">
+  <!-- 중복을 제거하고 하나로 깔끔하게 묶은 로고 영역 -->
+  <div class="logo-area">
     <div class="logo">World <span>Fate</span></div>
-    <button id="newWorld">새 세계</button>
-    <button id="addNation">국가 생성</button>
-    <button id="pause">Ⅱ</button>
-    <button class="speed active" data-speed="1">1x</button>
-    <button class="speed" data-speed="5">5x</button>
-    <button class="speed" data-speed="20">20x</button>
-    <button class="speed" data-speed="100">100x</button>
-    <button id="save">저장</button>
-    <button id="load">불러오기</button>
-    <div class="spacer"></div>
-    <div id="year">1년</div>
-    <div id="stats">국가 0 · 전쟁 0</div>
+    <div class="version">v1.3.2</div>
   </div>
+
+  <button id="newWorld">새 세계</button>
+  <button id="addNation">국가 생성</button>
+  <button id="pause">Ⅱ</button>
+  <button class="speed active" data-speed="1">1x</button>
+  <button class="speed" data-speed="5">5x</button>
+  <button class="speed" data-speed="20">20x</button>
+  <button class="speed" data-speed="100">100x</button>
+  <button id="save">저장</button>
+  <button id="load">불러오기</button>
+  <div class="spacer"></div>
+  <div id="year">1년</div>
+  <div id="stats">국가 0 · 전쟁 0</div>
+</div>
+
 
   <div id="left" class="panel">
     <h3>신의 시야</h3>
