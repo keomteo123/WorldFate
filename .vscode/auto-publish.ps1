@@ -18,6 +18,21 @@ if ($LASTEXITCODE -ne 0 -or $remote -ne 'https://github.com/keomteo123/WorldFate
     throw "Unexpected origin remote: '$remote'."
 }
 
+& git fetch origin mm
+if ($LASTEXITCODE -ne 0) {
+    throw 'Could not fetch the GitHub Pages source branch mm.'
+}
+
+& git merge-base --is-ancestor origin/mm HEAD
+if ($LASTEXITCODE -ne 0) {
+    throw 'The remote mm branch has new commits. Sync those changes before auto-publishing.'
+}
+
+$aheadCount = (& git rev-list --count origin/mm..HEAD).Trim()
+if ($LASTEXITCODE -ne 0) {
+    throw 'Could not check pending local commits.'
+}
+
 $extensions = @('.html', '.css', '.js', '.sql', '.mp4', '.json', '.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.mp3', '.ogg', '.wav', '.md')
 $pathspecs = @('*.html', '*.css', '*.js', '*.sql', '*.mp4', '*.json', '*.png', '*.jpg', '*.jpeg', '*.webp', '*.svg', '*.ico', '*.mp3', '*.ogg', '*.wav', '*.md')
 
@@ -36,7 +51,7 @@ function Get-SiteFileState {
 Write-Output 'Starting WorldFate auto-publisher'
 $lastState = Get-SiteFileState
 $changedAt = $null
-$pushPending = $false
+$pushPending = [int]$aheadCount -gt 0
 Write-Output 'READY: WorldFate auto-publisher is watching files'
 
 while ($true) {
