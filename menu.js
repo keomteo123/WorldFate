@@ -46,6 +46,7 @@
     const meta = loadMeta();
     meta[slot] = { name, savedAt: data.savedAt, year: info.year, mapName: info.mapName, nations: info.nations, thumb: WFGame.thumbnail() };
     saveMeta(meta);
+    cloudPush(slot);
     return true;
   }
 
@@ -54,7 +55,62 @@
     return raw ? unpack(raw) : null;
   }
 
+  // ---------- 클라우드 저장 (Supabase `saves` 테이블, 로그인했을 때만) ----------
+  // 무료 한도를 아끼려고 클라우드에는 수동 저장 슬롯 1~3만 올린다 (자동 저장 · 썸네일 제외)
+  const CLOUD_SLOTS = ['1', '2', '3'];
+  const cloudOn = () => !!(window.WFAuth && WFAuth.loggedIn());
+
+  async function cloudPush(slot) {
+    if (!cloudOn() || !CLOUD_SLOTS.includes(slot)) return;
+    const m = loadMeta()[slot], data = localStorage.getItem(SLOT_KEY(slot));
+    if (!m || !data) return;
+    try {
+      await WFAuth.rest('/rest/v1/saves?on_conflict=user_id,slot', {
+        method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal',
+        body: [{ slot, name: m.name, meta: { ...m, thumb: undefined }, data, updated_at: new Date(m.savedAt).toISOString() }]
+      });
+    } catch (e) { console.warn('클라우드 저장 실패', e); }
+  }
+
+  async function cloudDelete(slot) {
+    if (!cloudOn()) return;
+    try { await WFAuth.rest(`/rest/v1/saves?slot=eq.${encodeURIComponent(slot)}`, { method: 'DELETE', prefer: 'return=minimal' }); } catch (e) { console.warn(e); }
+  }
+
+  // 클라우드와 이 기기의 저장을 맞춘다: 더 최근 것이 이긴다. 바뀐 것이 있으면 true.
+  let syncing = null;
+  function cloudSync() {
+    if (!cloudOn()) return Promise.resolve(false);
+    if (syncing) return syncing;
+    syncing = (async () => {
+      let changed = false;
+      try {
+        const rows = await WFAuth.rest('/rest/v1/saves?select=slot,meta');
+        const meta = loadMeta();
+        const remote = new Map(rows.map(r => [r.slot, r.meta || {}]));
+        for (const [slot, rm] of remote) {
+          if (!CLOUD_SLOTS.includes(slot)) continue;
+          const lm = meta[slot], have = localStorage.getItem(SLOT_KEY(slot));
+          if (lm && have && (lm.savedAt || 0) >= (rm.savedAt || 0)) continue;
+          const got = await WFAuth.rest(`/rest/v1/saves?slot=eq.${encodeURIComponent(slot)}&select=data`);
+          if (!got.length) continue;
+          try { localStorage.setItem(SLOT_KEY(slot), got[0].data); } catch (e) { continue; }
+          meta[slot] = { ...rm, thumb: lm && lm.thumb };
+          changed = true;
+        }
+        saveMeta(meta);
+        for (const slot of CLOUD_SLOTS) {
+          const lm = meta[slot];
+          if (lm && localStorage.getItem(SLOT_KEY(slot)) && (!remote.has(slot) || (remote.get(slot).savedAt || 0) < (lm.savedAt || 0))) await cloudPush(slot);
+        }
+      } catch (e) { console.warn('클라우드 동기화 실패', e); }
+      return changed;
+    })().finally(() => { syncing = null; });
+    return syncing;
+  }
+
   function deleteSlot(slot) {
+    cloudDelete(slot);
     localStorage.removeItem(SLOT_KEY(slot));
     const meta = loadMeta();
     delete meta[slot];
@@ -105,6 +161,7 @@
 
   // ---------- 새 게임 ----------
   let selectedMap = 'random';
+  let selectedMode = null;   // 역사 시나리오 id (null이면 위에서 고른 지도로 새 세계를 만든다)
   let mapGridBuilt = false;
 
   function buildMapGrid() {
@@ -125,23 +182,59 @@
       card.dataset.id = def.id;
       card.appendChild(WFMaps.thumbnail(def, 160, 96));
       card.insertAdjacentHTML('beforeend', `<div class="mn">${def.icon ? def.icon + ' ' : ''}${def.name}</div><div class="md">${def.desc}</div>`);
-      card.onclick = () => selectMap(def.id);
+      card.onclick = () => { selectedMode = null; selectMap(def.id); };
       grid.appendChild(card);
+    }
+
+    // 모드: 실제 역사 속 국가와 영토로 시작
+    if (window.WFScenarios) {
+      const h = document.createElement('div');
+      h.className = 'mapGroup';
+      h.textContent = '모드 · 역사 시나리오';
+      grid.appendChild(h);
+      for (const sc of WFScenarios.list) {
+        const card = document.createElement('div');
+        card.className = 'mapCard modeCard';
+        card.dataset.mode = sc.id;
+        card.appendChild(WFMaps.thumbnail(WFMaps.get(sc.mapId), 160, 96));
+        card.insertAdjacentHTML('beforeend', `<div class="mn">${sc.icon} ${sc.name}</div><div class="md">${sc.desc}</div>`);
+        card.onclick = () => selectScenario(sc.id);
+        grid.appendChild(card);
+      }
+    }
+  }
+
+  function selectScenario(id) {
+    selectedMode = id;
+    const sc = WFScenarios.get(id);
+    selectedMap = sc.mapId;
+    refreshSelection();
+  }
+
+  function refreshSelection() {
+    document.querySelectorAll('.mapCard').forEach(c => {
+      c.classList.toggle('sel', selectedMode ? c.dataset.mode === selectedMode : c.dataset.id === selectedMap);
+    });
+    const sc = selectedMode ? WFScenarios.get(selectedMode) : null;
+    $('ngCount').disabled = !!sc;
+    if (sc) {
+      $('ngCount').value = sc.nations.length;
+      $('ngCountVal').textContent = sc.nations.length;
     }
   }
 
   function selectMap(id) {
     selectedMap = id;
     const def = WFMaps.get(id);
-    document.querySelectorAll('.mapCard').forEach(c => c.classList.toggle('sel', c.dataset.id === id));
     $('ngCount').value = def.nations || 14;
     $('ngCountVal').textContent = $('ngCount').value;
+    refreshSelection();
   }
 
   function openNewGame(from) {
     origin = from;
     buildMapGrid();
-    selectMap(selectedMap);
+    if (selectedMode) selectScenario(selectedMode); else selectMap(selectedMap);
     show('newGame');
   }
 
@@ -162,10 +255,10 @@
     // 화면이 갱신된 뒤 무거운 생성 작업을 시작한다
     setTimeout(() => {
       try {
-        WFGame.newGame({ mapId: selectedMap, nationCount: Number($('ngCount').value), seed });
+        WFGame.newGame({ mapId: selectedMap, nationCount: Number($('ngCount').value), seed, scenarioId: selectedMode });
         wasPaused = false;
         closeAll();
-        toast(`${WFMaps.get(selectedMap).name} — 새로운 세계가 시작됩니다`);
+        toast(`${selectedMode ? WFScenarios.get(selectedMode).name : WFMaps.get(selectedMap).name} — 새로운 세계가 시작됩니다`);
       } finally {
         btn.disabled = false;
         btn.textContent = '시작';
@@ -252,6 +345,7 @@
     $('slName').value = `${info.year}년 ${info.mapName}`;
     renderSlots();
     show('saveLoad');
+    cloudSync().then(changed => { if (changed && $('saveLoad').classList.contains('open')) renderSlots(); });
   }
 
   // ---------- 이벤트 연결 ----------
@@ -292,6 +386,13 @@
       try { await writeSlot('auto', `${WFGame.info().year}년 ${WFGame.info().mapName}`); } finally { autoSaving = false; }
     }
   };
+
+  window.addEventListener('wf-auth', () => {
+    cloudSync().then(changed => {
+      if (changed && $('saveLoad').classList.contains('open')) renderSlots();
+      if ($('home').classList.contains('open')) $('hmContinue').disabled = !latestSlot();
+    });
+  });
 
   showHome();
 })();

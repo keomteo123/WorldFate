@@ -53,7 +53,9 @@
     조선: '#a67ccf',
     베헬라: '#ffc76a',
     달: '#a0c5ff',
-    전사: '#d86a6a'
+    전사: '#d86a6a',
+    가톨릭: '#d9b84a', 개신교: '#5c86c7', 정교회: '#8b5ea8', 이슬람: '#3f9a5a', 불교: '#e0883a',
+    힌두교: '#d9573a', 유교: '#b04a4a', 신토: '#e8e0d0', 토착신앙: '#8a7a5a', 유대교: '#4aa0d9', 도교: '#4bafa9'
   };
   const RESOURCE_ICON = {
     철: '⛓',
@@ -356,6 +358,12 @@
     return n.name;
   }
 
+  function categoryColor(key) {
+    let h = 7;
+    for (let i = 0; i < key.length; i++) h = (Math.imul(h, 31) + key.charCodeAt(i)) >>> 0;
+    return hslToHex((h * 47) % 360, 0.6 + (h % 3) * 0.08, 0.5 + ((h >> 3) % 3) * 0.07);
+  }
+
   function getNationGroup(n) {
     if (!n) return null;
     return alliances.find(g => g.members.includes(n.id)) || null;
@@ -490,6 +498,52 @@
   }
 
 
+  // 역사 시나리오: 실제 위경도에서 국가를 만든다
+  function snapToLand(x, y) {
+    x = Math.round(x); y = Math.round(y);
+    for (let r = 0; r <= 16; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const nx = x + dx, ny = y + dy;
+          if (nx < 3 || ny < 3 || nx > MAP_W - 4 || ny > MAP_H - 4) continue;
+          if (land[idx(nx, ny)]) return { x: nx, y: ny };
+        }
+      }
+    }
+    return null;
+  }
+
+  function createScenarioNations(sc, def) {
+    const P = WFMaps.projection(def, MAP_W, MAP_H);
+    for (const r of sc.nations) {
+      const pts = r.seeds.map(([lo, la]) => snapToLand(P.x(lo), P.y(la))).filter(Boolean);
+      if (!pts.length) continue;
+      nations.push({
+        id: nations.length, name: r.name, color: r.color || pickNationColor(), species: r.eth, ideology: r.ideo,
+        seedX: pts[0].x, seedY: pts[0].y, seeds: pts, reach: r.reach || 1,
+        population: 80 + r.pw * 45 + rand(0, 40), army: 80, gold: 150 + r.pw * 80 + rand(0, 100),
+        tech: r.tech, stability: rand(65, 90), power: 0, age: 0, alive: true, cities: [],
+        capital: { x: pts[0].x, y: pts[0].y }, relations: {}, plague: 0, warExhaustion: 0,
+        allianceId: null, unionId: null, religion: r.rel, happiness: rand(55, 80),
+        demographics: { children: 0.32, adults: 0.53, elders: 0.15 }, tradeIncome: 0, lowStabYears: 0, isRebel: false
+      });
+    }
+  }
+
+  function applyScenarioDiplomacy(sc) {
+    const byName = new Map(nations.map(n => [n.name, n.id]));
+    for (const g of sc.alliances || []) {
+      const ids = g.members.map(m => byName.get(m)).filter(v => v !== undefined);
+      for (let k = 1; k < ids.length; k++) createAllianceBetween(ids[0], ids[k]);
+      const group = ids.length ? getNationGroup(nations[ids[0]]) : null;
+      if (group) { group.name = g.name; group.color = nations[ids[0]].color; }
+    }
+    for (const [a, b] of sc.wars || []) {
+      if (byName.has(a) && byName.has(b)) forceWarBetween(byName.get(a), byName.get(b));
+    }
+  }
+
   function assignTerritories() {
     const INF = 1e30;
     const dist = new Float64Array(MAP_W * MAP_H);
@@ -527,11 +581,14 @@
       return root;
     }
 
+    const reachOf = nations.map(n => n.reach || 1);
     for (const n of nations) {
-      const i = idx(n.seedX, n.seedY);
-      dist[i] = 0;
-      owner[i] = n.id;
-      push({ d: 0, i, n: n.id });
+      for (const sd of (n.seeds || [{ x: n.seedX, y: n.seedY }])) {
+        const i = idx(sd.x, sd.y);
+        dist[i] = 0;
+        owner[i] = n.id;
+        push({ d: 0, i, n: n.id });
+      }
     }
 
     const dirs = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.42], [-1, 1, 1.42], [1, -1, 1.42], [-1, -1, 1.42]];
@@ -544,7 +601,7 @@
         if (!inside(nx, ny)) continue;
         const ni = idx(nx, ny);
         if (!land[ni]) continue;
-        const nd = q.d + d[2] * cellsCost[ni];
+        const nd = q.d + d[2] * cellsCost[ni] / reachOf[q.n];
         if (nd < dist[ni]) {
           dist[ni] = nd;
           owner[ni] = q.n;
@@ -607,7 +664,7 @@
   }
 
   // ===== 구역(주): 땅을 여러 조각으로 쪼개고, 점령은 구역 단위로 일어난다 =====
-  const PROV_SPACING = 38;
+  let provSpacing = 38;      // 구역 씨앗 간격(칸). 세계 시나리오는 촘촘하게
   let provOf = new Int16Array(MAP_W * MAP_H).fill(-1);
   let provinces = [];      // { id, sx, sy, cx, cy, cells:Int32Array, adj:[], owner, capture:null }
   let provVersion = 0;     // 구역 소유가 바뀔 때마다 증가 (이웃 캐시 무효화용)
@@ -642,11 +699,13 @@
     const seeds = [];
     for (const n of nations) {
       if (!n.alive || n.seedX === undefined) continue;
-      const sx = clamp(Math.floor(n.seedX), 0, MAP_W - 1), sy = clamp(Math.floor(n.seedY), 0, MAP_H - 1);
-      const i = idx(sx, sy);
-      if (!land[i]) continue;
-      if (seeds.some(s => Math.hypot(s.x - sx, s.y - sy) < 8)) continue;
-      seeds.push({ x: sx, y: sy, comp: comp[i] });
+      for (const sd of (n.seeds || [{ x: n.seedX, y: n.seedY }])) {
+        const sx = clamp(Math.floor(sd.x), 0, MAP_W - 1), sy = clamp(Math.floor(sd.y), 0, MAP_H - 1);
+        const i = idx(sx, sy);
+        if (!land[i]) continue;
+        if (seeds.some(s => Math.hypot(s.x - sx, s.y - sy) < 8)) continue;
+        seeds.push({ x: sx, y: sy, comp: comp[i] });
+      }
     }
     for (let k = 0; k < 12000; k++) {
       const x = Math.floor(hash2(k, 101) * MAP_W), y = Math.floor(hash2(k, 202) * MAP_H);
@@ -654,7 +713,7 @@
       if (!land[i]) continue;
       let ok = true;
       for (const s of seeds) {
-        if ((s.x - x) * (s.x - x) + (s.y - y) * (s.y - y) < PROV_SPACING * PROV_SPACING) { ok = false; break; }
+        if ((s.x - x) * (s.x - x) + (s.y - y) * (s.y - y) < provSpacing * provSpacing) { ok = false; break; }
       }
       if (ok) seeds.push({ x, y, comp: comp[i] });
     }
@@ -754,8 +813,10 @@
     if (snapOwners) {
       for (const n of nations) {
         if (!n.alive || n.seedX === undefined) continue;
-        const pid = provOf[idx(clamp(Math.floor(n.seedX), 0, MAP_W - 1), clamp(Math.floor(n.seedY), 0, MAP_H - 1))];
-        if (pid >= 0) provinces[pid].owner = n.id;
+        for (const sd of (n.seeds || [{ x: n.seedX, y: n.seedY }])) {
+          const pid = provOf[idx(clamp(Math.floor(sd.x), 0, MAP_W - 1), clamp(Math.floor(sd.y), 0, MAP_H - 1))];
+          if (pid >= 0) provinces[pid].owner = n.id;
+        }
       }
       for (const p of provinces) if (p.owner >= 0) for (const c of p.cells) owner[c] = p.owner;
     }
@@ -981,7 +1042,9 @@
     wars = [];
     events = [];
     alliances = [];
-    year = 1;
+    const sc = opts.scenarioId && window.WFScenarios ? WFScenarios.get(opts.scenarioId) : null;
+    year = sc ? sc.year : 1;
+    provSpacing = sc ? sc.provSpacing : 38;
     selected = -1;
     targetId = -1;
     selectionBorder = [];
@@ -995,16 +1058,21 @@
     terrain.fill(0);
     owner.fill(-1);
     generateLandForMap(def);
+    if (sc) { currentMap.name = sc.name; currentMap.scenarioId = sc.id; }
     generateTerrain();
-    const wanted = opts.nationCount || (def.kind === 'procedural' ? irand(Math.max(8, (def.nations || 14) - 3), (def.nations || 14) + 3) : def.nations);
-    createNations(wanted);
+    if (sc) createScenarioNations(sc, def);
+    else {
+      const wanted = opts.nationCount || (def.kind === 'procedural' ? irand(Math.max(8, (def.nations || 14) - 3), (def.nations || 14) + 3) : def.nations);
+      createNations(wanted);
+    }
     initialNationCount = nations.length;
     assignTerritories();
     claimUnclaimedLand();
     generateProvinces(true);
     generateCities();
     fitCamera();
-    logEvent(`신이 새로운 세계를 창조했다. (${currentMap.name})`, 'god');
+    logEvent(sc ? `${sc.name} — ${sc.year}년의 세계가 펼쳐진다.` : `신이 새로운 세계를 창조했다. (${currentMap.name})`, 'god');
+    if (sc) applyScenarioDiplomacy(sc);
     renderWorld();
     updateUI();
   }
@@ -1218,14 +1286,11 @@
     const tints = nations.map(n => {
       if (!n) return null;
       const group = getNationGroup(n);
-      const rgb = hexRGB(group ? group.color : n.color);
-      let val = 0;
-      if (layer === 'population') val = clamp(n.population / 1000, 0, 1);
-      if (layer === 'army') val = clamp(dotsFor(n) / 30, 0, 1);
-      if (layer === 'gold') val = clamp(n.gold / 1500, 0, 1);
-      if (layer === 'tech') val = clamp(n.tech / 100, 0, 1);
-      const rel = n.religion && religionColor[n.religion] ? hexRGB(religionColor[n.religion]) : rgb;
-      return { rgb: layer === 'religion' ? rel : rgb, heat: layer === 'political' || layer === 'religion' ? null : heatColor(val) };
+      let hex = n.color;                                   // 국가
+      if (layer === 'alliance') hex = group ? group.color : '#9a9a94'; // 연맹: 무소속은 회색
+      else if (layer === 'species') hex = categoryColor('species:' + n.species);
+      else if (layer === 'religion') hex = religionColor[n.religion] || categoryColor('religion:' + n.religion);
+      return { rgb: hexRGB(hex), heat: null };
     });
 
     for (let y = 0; y < MAP_H; y++) {
@@ -1619,7 +1684,6 @@
   function updateUI() {
     ui.year.textContent = `${year}년`;
     ui.stats.textContent = `국가 ${nations.filter(n => n.alive).length} · 전쟁 ${wars.length}`;
-
     const box = ui.selectedBox;
     const panel = ui.godPanel;
 
@@ -2343,8 +2407,7 @@
   }
 
   // 점령지 봉기: 원래 주인에게 돌아가거나(해방), 독립 국가를 세운다
-  function spawnProvinceRevolt(p, n) {
-    const orig = nations[p.origOwner];
+  function spawnProvinceRevolt(p, n) {    const orig = nations[p.origOwner];
     const group = [p];
     for (const q of p.adj) {
       const qp = provinces[q];
@@ -2465,7 +2528,64 @@
     for (let s = 0; s < steps; s++) updateUnitsStep(dt / steps);
   }
 
+  // 통행 규칙: 자국 · 적국 · 동맹 · 주인 없는 땅만 지나갈 수 있고, 중립국 영토는 통과할 수 없다
+  let pathCache = new Map();
+  let pathCacheKey = '', pathCacheAge = 0;
+  function provAllowed(nid, foes, p) {
+    const o = p.owner;
+    if (o < 0 || o === nid || (foes && foes.has(o))) return true;
+    const a = nations[nid], b = nations[o];
+    return !!(a && b && sameGroup(a, b));
+  }
+
+  // goal 구역에서 거꾸로 퍼져 나가며 통행 가능한 구역까지의 거리를 계산 (-1이면 갈 수 없음)
+  function distMapTo(nid, foes, goal) {
+    const key = nid * 100000 + goal;
+    let d = pathCache.get(key);
+    if (d) return d;
+    d = new Int32Array(provinces.length).fill(-1);
+    d[goal] = 0;
+    const q = [goal];
+    for (let h = 0; h < q.length; h++) {
+      const p = provinces[q[h]];
+      for (const a of p.adj) {
+        if (d[a] >= 0 || !provAllowed(nid, foes, provinces[a])) continue;
+        d[a] = d[p.id] + 1;
+        q.push(a);
+      }
+    }
+    pathCache.set(key, d);
+    return d;
+  }
+
+  // 바다를 건너는 직선 경로가 중립국 땅을 지나지 않는지 확인
+  function lineClear(nid, foes, x1, y1, x2, y2) {
+    const steps = Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 2);
+    for (let s = 1; s < steps; s++) {
+      const x = Math.floor(x1 + (x2 - x1) * s / steps), y = Math.floor(y1 + (y2 - y1) * s / steps);
+      if (!inside(x, y) || !land[idx(x, y)]) continue;
+      const pid = provOf[idx(x, y)];
+      if (pid >= 0 && !provAllowed(nid, foes, provinces[pid])) return false;
+    }
+    return true;
+  }
+
+  function canReach(n, foes, goalProv, mine) {
+    if (!mine.length) return true;
+    const d = distMapTo(n.id, foes, goalProv.id);
+    if (mine.some(q => d[q.id] >= 0)) return true;
+    let near = mine[0], nd = Infinity;
+    for (const q of mine) {
+      const dd = Math.hypot(goalProv.cx - q.cx, goalProv.cy - q.cy);
+      if (dd < nd) { nd = dd; near = q; }
+    }
+    return lineClear(n.id, foes, near.cx, near.cy, goalProv.cx, goalProv.cy);
+  }
+
   function updateUnitsStep(dt) {
+    // 구역 소유 · 전쟁 · 동맹이 바뀌지 않았다면 경로 계산을 잠시 재사용
+    const ck = `${provVersion}:${wars.length}:${alliances.length}`;
+    if (ck !== pathCacheKey || ++pathCacheAge > 30) { pathCache = new Map(); pathCacheKey = ck; pathCacheAge = 0; }
     const foesOf = new Map();
     for (const w of wars) {
       if (!w.active) continue;
@@ -2576,6 +2696,23 @@
         tx = u.tx; ty = u.ty; speed = WANDER_SPEED * u.spd;
       } else if (gp) {
         tx = gp.cx + u.ox * 3; ty = gp.cy + u.oy * 3; speed = marchSpeed;
+        if (!u.sea && u.prov >= 0 && u.prov !== u.goal) {
+          const dm = distMapTo(u.owner, foes, u.goal);
+          const cur = dm[u.prov];
+          if (cur > 0) {
+            // 통행 가능한 구역만 이어서 다음 구역 중심으로 행군
+            let hop = null, hd = Infinity;
+            for (const a of provinces[u.prov].adj) {
+              if (dm[a] !== cur - 1) continue;
+              const dd = Math.hypot(provinces[a].cx - u.x, provinces[a].cy - u.y);
+              if (dd < hd) { hd = dd; hop = provinces[a]; }
+            }
+            if (hop) { tx = hop.cx; ty = hop.cy; }
+          } else if (cur < 0 && gp.owner !== u.owner) {
+            // 갈 수 없는 땅에 서 있으면 철수
+            u.goal = homeGoal(u, ownedProvs);
+          }
+        }
       }
 
       const dx = tx - u.x, dy = ty - u.y;
@@ -2669,6 +2806,7 @@
     const out = [];
     for (const p of provinces) {
       if (!foes.has(p.owner)) continue;
+      if (!canReach(n, foes, p, mine)) continue; // 중립국을 가로질러야 하면 공격 대상에서 제외
       let near = mine.length ? Infinity : 0;
       for (const q of mine) {
         const d = Math.hypot(p.cx - q.cx, p.cy - q.cy);
@@ -2683,7 +2821,9 @@
       out.push({ p, score });
     }
     out.sort((a, b) => a.score - b.score);
-    return out.map(o => o.p);
+    // 영토가 흩어지지 않도록, 우리 땅과 맞닿은(또는 점령 중인) 구역이 있으면 그쪽만 노린다
+    const joined = out.filter(o => o.p.adj.some(a => provinces[a].owner === n.id) || (o.p.capture && o.p.capture.to === n.id));
+    return (joined.length ? joined : out).map(o => o.p);
   }
 
   function isCapitalProvince(p) {
@@ -2693,9 +2833,28 @@
   }
 
   function startCapture(p, to) {
+    // 공격국 땅과 맞닿은 칸에서부터 번져 나가 점령지가 한 덩어리로 이어지게 한다
+    const seeds = [];
+    for (const c of p.cells) {
+      const x = c % MAP_W, y = Math.floor(c / MAP_W);
+      if ((x > 0 && owner[c - 1] === to) || (x < MAP_W - 1 && owner[c + 1] === to) ||
+          (y > 0 && owner[c - MAP_W] === to) || (y < MAP_H - 1 && owner[c + MAP_W] === to)) seeds.push(x, y);
+    }
+    const sstep = Math.max(2, Math.ceil(seeds.length / 80)) & ~1; // (x,y) 쌍 단위로 솎아내기
     const keyed = Array.from(p.cells, c => {
-      const dx = (c % MAP_W) - p.cx, dy = Math.floor(c / MAP_W) - p.cy;
-      return [dx * dx + dy * dy + Math.random() * 120, c];
+      const cx = c % MAP_W, cy = Math.floor(c / MAP_W);
+      let best = Infinity;
+      if (seeds.length) {
+        for (let k = 0; k < seeds.length; k += sstep) {
+          const dx = cx - seeds[k], dy = cy - seeds[k + 1];
+          const d = dx * dx + dy * dy;
+          if (d < best) best = d;
+        }
+      } else {
+        const dx = cx - p.cx, dy = cy - p.cy;
+        best = dx * dx + dy * dy;
+      }
+      return [best + Math.random() * 8, c];
     });
     keyed.sort((a, b) => a[0] - b[0]);
     return { to, from: p.owner, progress: 0, flipped: 0, order: Int32Array.from(keyed, k => k[1]) };
@@ -3224,7 +3383,7 @@
 
   function serializeGame() {
     return {
-      v: 2, mapId: currentMap.id, seed, year, layer, savedAt: Date.now(),
+      v: 2, mapId: currentMap.id, scenarioId: currentMap.scenarioId || null, seed, year, layer, savedAt: Date.now(),
       land: rleEncode(land),
       provOf: rleEncode(provOf),
       prov: provinces.map(p => [p.owner, p.origOwner, p.conqueredYear]),
@@ -3239,6 +3398,8 @@
     rng = mulberry32(seed + 17);
     rleDecode(d.land, land);
     currentMap = { ...def, latAt: def.kind === 'real' && window.WFMaps ? WFMaps.projection(def, MAP_W, MAP_H).latAt : null };
+    const scn = d.scenarioId && window.WFScenarios ? WFScenarios.get(d.scenarioId) : null;
+    if (scn) { currentMap.name = scn.name; currentMap.scenarioId = scn.id; }
     terrain.fill(0);
     generateTerrain();
 
@@ -3247,7 +3408,7 @@
     wars = d.wars || [];
     events = d.events || [];
     year = d.year || 1;
-    layer = d.layer || 'political';
+    layer = ['political', 'alliance', 'species', 'religion'].includes(d.layer) ? d.layer : 'political';
     initialNationCount = d.initial || Math.max(8, nations.filter(n => !n.parentId).length);
     for (const n of nations) { n.relations = n.relations || {}; n.cities = n.cities || []; }
 
@@ -3311,7 +3472,7 @@
       deserializeGame(d);
       gameStarted = true;
     },
-    info: () => ({ year, mapId: currentMap.id, mapName: currentMap.name, nations: nations.filter(n => n.alive).length, started: gameStarted }),
+    info: () => ({ year, mapId: currentMap.id, scenarioId: currentMap.scenarioId || null, mapName: currentMap.name, nations: nations.filter(n => n.alive).length, started: gameStarted }),
     thumbnail: thumbnailURL,
     setPaused,
     isPaused: () => paused,
