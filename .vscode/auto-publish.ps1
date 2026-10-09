@@ -51,6 +51,13 @@ function Get-SiteFileState {
 Write-Output 'Starting WorldFate auto-publisher'
 $lastState = Get-SiteFileState
 $changedAt = $null
+$pendingSiteChanges = @(& git status --porcelain -- @pathspecs)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Could not check for pending site file changes.'
+}
+if ($pendingSiteChanges.Count -gt 0) {
+    $changedAt = [DateTime]::UtcNow
+}
 $pushPending = [int]$aheadCount -gt 0
 Write-Output 'READY: WorldFate auto-publisher is watching files'
 
