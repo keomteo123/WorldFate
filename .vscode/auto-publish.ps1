@@ -48,6 +48,18 @@ function Get-SiteFileState {
     }) -join "`n")
 }
 
+function Get-SiteGitPaths {
+    $paths = @(& git ls-files --cached --others --exclude-standard)
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not list site files for staging.'
+    }
+
+    return @($paths | Where-Object {
+        $_ -notmatch '(^|/)\.vscode/' -and
+        $extensions -contains [IO.Path]::GetExtension($_).ToLowerInvariant()
+    })
+}
+
 Write-Output 'Starting WorldFate auto-publisher'
 $lastState = Get-SiteFileState
 $changedAt = $null
@@ -70,9 +82,12 @@ while ($true) {
     }
 
     if ($changedAt -and ([DateTime]::UtcNow - $changedAt).TotalSeconds -ge 8) {
-        & git add -A -- @pathspecs
-        if ($LASTEXITCODE -ne 0) {
-            throw "git add failed with exit code $LASTEXITCODE."
+        $sitePaths = @(Get-SiteGitPaths)
+        if ($sitePaths.Count -gt 0) {
+            & git add -A -- @sitePaths
+            if ($LASTEXITCODE -ne 0) {
+                throw "git add failed with exit code $LASTEXITCODE."
+            }
         }
 
         & git diff --cached --quiet
