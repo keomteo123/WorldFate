@@ -4,7 +4,7 @@
   const $ = id => document.getElementById(id);
 
   const OPERATOR = {
-    name: 'WorldFate 운영팀',
+    name: 'Mojaran_studio',
     email: 'keomteo123@gmail.com',
     address: ''
   };
