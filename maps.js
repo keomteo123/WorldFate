@@ -164,10 +164,132 @@
     return c;
   }
 
+  // ===== 현대 국경: 나라별 폴리곤을 칸 단위로 채워 "칸 → 나라 번호" 배열을 만든다 =====
+  let countryPolys = null;
+  function decodeCountries() {
+    if (countryPolys) return countryPolys;
+    const topo = window.WF_COUNTRIES_TOPO;
+    countryPolys = { names: [], polys: [] };
+    if (!topo) return countryPolys;
+    const t = topo.transform || { scale: [1, 1], translate: [0, 0] };
+    const arcs = topo.arcs.map(a => {
+      let x = 0, y = 0;
+      return a.map(p => { x += p[0]; y += p[1]; return [x * t.scale[0] + t.translate[0], y * t.scale[1] + t.translate[1]]; });
+    });
+    const arcPts = i => (i >= 0 ? arcs[i] : arcs[~i].slice().reverse());
+    const ringOf = ids => {
+      const pts = [];
+      for (const i of ids) {
+        const a = arcPts(i);
+        for (let k = pts.length ? 1 : 0; k < a.length; k++) pts.push(a[k]);
+      }
+      let off = 0;
+      return pts.map((p, i) => {
+        if (i) {
+          const d = p[0] - pts[i - 1][0];
+          if (d > 180) off -= 360; else if (d < -180) off += 360;
+        }
+        return [p[0] + off, p[1]];
+      });
+    };
+    const add = (ci, polyArcs) => {
+      const rings = polyArcs.map(ringOf);
+      let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+      for (const p of rings[0]) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
+      if (y1 < -60) return; // 남극 제외
+      countryPolys.polys.push({ ci, bbox: [x0, y0, x1, y1], rings });
+    };
+    for (const g of topo.objects.countries.geometries) {
+      const ci = countryPolys.names.length;
+      countryPolys.names.push(g.properties.name);
+      if (g.type === 'Polygon') add(ci, g.arcs);
+      else if (g.type === 'MultiPolygon') g.arcs.forEach(a => add(ci, a));
+    }
+    return countryPolys;
+  }
+
+  // 반환: { ids: Int16Array(w*h, 나라 번호 / 없으면 -1), names: [영문 국가명] }
+  // 역사 국경(historic-data.js)을 같은 형태로 바꾼다
+  const histCache = {};
+  function histPolys(key) {
+    if (histCache[key]) return histCache[key];
+    const out = { names: [], polys: [] };
+    for (const [name, polys] of (window.WF_HIST && window.WF_HIST[key]) || []) {
+      const ci = out.names.length;
+      out.names.push(name);
+      for (const rings of polys) {
+        const rr = rings.map(flat => { const r = []; for (let i = 0; i < flat.length; i += 2) r.push([flat[i], flat[i + 1]]); return r; });
+        let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+        for (const p of rr[0]) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
+        out.polys.push({ ci, bbox: [x0, y0, x1, y1], rings: rr });
+      }
+    }
+    return (histCache[key] = out);
+  }
+
+  function rasterizeCountries(def, w, h, landMask, histKey) {
+    const P = projection(def, w, h);
+    const { names, polys } = histKey ? histPolys(histKey) : decodeCountries();
+    const ids = new Int16Array(w * h).fill(-1);
+    const [vx0, vy1, vx1, vy0] = P.view;
+    for (const poly of polys) {
+      const b = poly.bbox;
+      if (b[3] < vy1 - 2 || b[1] > vy0 + 2) continue;
+      for (const shift of [0, 360, -360]) {
+        if (b[2] + shift < vx0 - 2 || b[0] + shift > vx1 + 2) continue;
+        const rows = new Map();
+        for (const ring of poly.rings) {
+          let px0 = P.x(ring[0][0] + shift), py0 = P.y(ring[0][1]);
+          for (let i = 1; i <= ring.length; i++) {
+            const q = ring[i % ring.length];
+            const px1 = P.x(q[0] + shift), py1 = P.y(q[1]);
+            if (py0 !== py1) {
+              const lo = Math.min(py0, py1), hi = Math.max(py0, py1);
+              const yStart = Math.max(0, Math.ceil(lo - 0.5)), yEnd = Math.min(h - 1, Math.ceil(hi - 0.5) - 1);
+              for (let y = yStart; y <= yEnd; y++) {
+                const yc = y + 0.5;
+                const x = px0 + (yc - py0) * (px1 - px0) / (py1 - py0);
+                let arr = rows.get(y);
+                if (!arr) { arr = []; rows.set(y, arr); }
+                arr.push(x);
+              }
+            }
+            px0 = px1; py0 = py1;
+          }
+        }
+        for (const [y, xs] of rows) {
+          xs.sort((a, c) => a - c);
+          for (let k = 0; k + 1 < xs.length; k += 2) {
+            const xa = Math.max(0, Math.ceil(xs[k] - 0.5)), xb = Math.min(w - 1, Math.ceil(xs[k + 1] - 0.5) - 1);
+            for (let x = xa; x <= xb; x++) ids[y * w + x] = poly.ci;
+          }
+        }
+      }
+    }
+    // 육지인데 국경 데이터에 비어 있는 칸(해안선 오차)은 가까운 나라로 채운다. 3칸 안쪽만 — 데이터가 없는 땅까지 번지면 안 된다.
+    if (landMask) {
+      const depth = new Uint8Array(ids.length);
+      const q = [];
+      for (let i = 0; i < ids.length; i++) if (ids[i] >= 0) q.push(i);
+      for (let qi = 0; qi < q.length; qi++) {
+        const i = q[qi], x = i % w, y = (i / w) | 0;
+        if (depth[i] >= 3) continue;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const ni = ny * w + nx;
+          if (ids[ni] < 0 && landMask[ni]) { ids[ni] = ids[i]; depth[ni] = depth[i] + 1; q.push(ni); }
+        }
+      }
+    }
+    return { ids, names };
+  }
+
   window.WFMaps = {
     list: DEFS,
     get: id => DEFS.find(d => d.id === id) || DEFS[0],
     rasterize,
+    rasterizeCountries,
     projection,
     thumbnail
   };

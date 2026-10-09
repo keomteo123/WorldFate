@@ -15,13 +15,14 @@
   <!-- 중복을 제거하고 하나로 깔끔하게 묶은 로고 영역 -->
   <div class="logo-area">
     <div class="logo">World <span>Fate</span></div>
-    <div class="version">v1.6.3</div>
+    <div class="version">v1.7.2</div>
   </div>
 
   <button id="homeBtn" title="홈 화면">☰ 메뉴</button>
   <button id="newWorld">새 게임</button>
   <button id="addNation">국가 생성</button>
   <button id="pause">Ⅱ</button>
+  <button class="speed active" data-speed="0.5">0.5x</button>
   <button class="speed active" data-speed="1">1x</button>
   <button class="speed" data-speed="5">5x</button>
   <button class="speed" data-speed="20">20x</button>
@@ -59,6 +60,8 @@
       <button id="breakAlliance">동맹 해체</button>
       <button id="startWar">전쟁 선포</button>
       <button id="makePeace">평화 조약</button>
+      <button id="colonize">식민지화</button>
+      <button id="releaseColony">식민지 해방</button>
     </div>
 
     <h4>선택한 국가</h4>
@@ -137,7 +140,7 @@
       <button id="hmHelp">조작법</button>
     </div>
     <div class="homeHint" id="hmHint"></div>
-    <div class="homeFoot">v1.6.3</div>
+    <div class="homeFoot">v1.7.2 · <a href="#" data-open-terms>이용약관 · 개인정보 처리방침</a></div>
   </div>
 </div>
 
@@ -149,7 +152,7 @@
     <div id="mapGrid"></div>
     <div class="optRow">
       <label>국가 수 <b id="ngCountVal">14</b>
-        <input id="ngCount" type="range" min="4" max="30" value="14">
+        <input id="ngCount" type="range" min="4" max="40" value="14">
       </label>
       <label>시드
         <span class="seedBox"><input id="ngSeed" type="text" placeholder="비우면 무작위" maxlength="24"><button id="ngDice" title="무작위 시드">🎲</button></span>
@@ -214,19 +217,41 @@
       <div class="dlgBtns"><button id="acLogout">로그아웃</button></div>
     </div>
     <div class="dlgSub" id="acMsg"></div>
+    <div class="dlgSub tmLinks"><a href="#" data-open-terms>이용약관 · 개인정보 처리방침 / Terms · Privacy</a></div>
     <div class="dlgBtns"><button id="acClose">닫기</button></div>
+  </div>
+</div>
+
+<!-- 이용약관 · 개인정보 처리방침 / 회원가입 동의 -->
+<div id="termsDlg" class="dialog">
+  <div class="dlgBox wide tmBox">
+    <h3 id="tmTitle"></h3>
+    <div class="tmLang"><button id="tmLangKo">한국어</button><button id="tmLangEn">English</button></div>
+    <div id="tmBody" class="tmBody" tabindex="0"></div>
+    <div id="tmConsent" class="tmConsent">
+      <label class="tmAll"><input type="checkbox" id="tmAll"><span></span></label>
+      <label><input type="checkbox" id="tm_c1"><span></span></label>
+      <label><input type="checkbox" id="tm_c2"><span></span></label>
+      <label><input type="checkbox" id="tm_c3"><span></span></label>
+      <label><input type="checkbox" id="tm_c4"><span></span></label>
+    </div>
+    <div class="dlgSub" id="tmNote"></div>
+    <div class="dlgBtns"><button id="tmCancel"></button><button id="tmOk" class="primary" disabled></button></div>
   </div>
 </div>
 
 <div id="toast"></div>
 
 <script src="worldmap-data.js"></script>
+<script src="countries-data.js"></script>
+<script src="historic-data.js"></script>
 <script src="maps.js"></script>
 <script src="scenarios.js"></script>
 <script src="audio.js"></script>
 <script src="game.js"></script>
 <script src="visual-overlays.js"></script>
 <script src="menu.js"></script>
+<script src="terms.js"></script>
 <script src="settings.js"></script>
 </body>
 </html>

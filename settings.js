@@ -76,6 +76,14 @@
     $('stVolume').value = Math.round(s.volume * 100);
     $('stVolumeVal').textContent = Math.round(s.volume * 100);
     $('stMuted').checked = s.muted;
+    const r = WFRules.get();
+    $('stColonies').checked = r.colonies;
+    $('stDisasters').checked = r.disasters;
+    $('stEvent').value = Math.round(r.eventRate * 10);
+    $('stEventVal').textContent = r.eventRate.toFixed(1);
+    $('stTech').value = Math.round(r.techSpeed * 10);
+    $('stTechVal').textContent = r.techSpeed.toFixed(1);
+    WFI18n.renderPicker();
   }
 
   function renderAccount() {
@@ -95,11 +103,14 @@
   async function auth(kind) {
     const email = $('acEmail').value.trim(), password = $('acPass').value;
     if (!email || !password) return msg('이메일과 비밀번호를 입력해 주세요.', true);
+    if (kind === 'signup') {
+      if (!(await WFTerms.ask())) return msg('약관에 동의하셔야 가입할 수 있어요.', true);
+    }
     $('acLogin').disabled = $('acSignup').disabled = true;
     msg('잠시만요…');
     try {
       if (kind === 'signup') {
-        const r = await sb('/auth/v1/signup', { method: 'POST', body: { email, password } });
+        const r = await sb('/auth/v1/signup', { method: 'POST', body: { email, password, data: WFTerms.consentData() } });
         if (!r.access_token) { msg('가입 완료! 이메일로 온 인증 링크를 누른 뒤 로그인해 주세요.'); return; }
         storeSession(r);
       } else {
@@ -144,6 +155,11 @@
 
   $('stTrack').onchange = () => WFAudio.set({ track: $('stTrack').value });
   $('stVolume').oninput = () => { $('stVolumeVal').textContent = $('stVolume').value; WFAudio.set({ volume: $('stVolume').value / 100 }); };
+  $('stLang').onchange = () => WFI18n.set($('stLang').value);
+  $('stColonies').onchange = () => WFRules.set({ colonies: $('stColonies').checked });
+  $('stDisasters').onchange = () => WFRules.set({ disasters: $('stDisasters').checked });
+  $('stEvent').oninput = () => { const v = $('stEvent').value / 10; $('stEventVal').textContent = v.toFixed(1); WFRules.set({ eventRate: v }); };
+  $('stTech').oninput = () => { const v = $('stTech').value / 10; $('stTechVal').textContent = v.toFixed(1); WFRules.set({ techSpeed: v }); };
   $('stMuted').onchange = () => WFAudio.set({ muted: $('stMuted').checked });
   WFAudio.onChange(() => { if ($('settingsDlg').classList.contains('open')) renderSettings() });
 

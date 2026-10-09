@@ -5,6 +5,43 @@
   const rows = list => list.map(([name, eth, rel, ideo, tech, pw, seeds, reach, color]) =>
     ({ name, eth, rel, ideo, tech, pw, seeds, reach: reach || 1, color }));
 
+
+  // ===== 2026년 실제 국경 =====
+  // 나라 이름 → 지도 데이터(Natural Earth)의 영문 국가명. 여기 없는 값은 이름과 같은 영문명이 아니라 아래 예외 표를 따른다.
+  const B = { 미국: ['United States of America', 'Puerto Rico', 'Guam', 'U.S. Virgin Is.', 'N. Mariana Is.', 'American Samoa'],
+    캐나다: ['Canada'], 멕시코: ['Mexico'], 쿠바: ['Cuba'], 과테말라: ['Guatemala'], 니카라과: ['Nicaragua'], 파나마: ['Panama'],
+    콜롬비아: ['Colombia'], 베네수엘라: ['Venezuela'], 에콰도르: ['Ecuador'], 페루: ['Peru'], 볼리비아: ['Bolivia'], 브라질: ['Brazil'],
+    파라과이: ['Paraguay'], 칠레: ['Chile'], 아르헨티나: ['Argentina'], 우루과이: ['Uruguay'],
+    영국: ['United Kingdom', 'Isle of Man', 'Guernsey', 'Jersey', 'Falkland Is.', 'S. Geo. and the Is.', 'Bermuda', 'Cayman Is.'],
+    아일랜드: ['Ireland'], 아이슬란드: ['Iceland'], 프랑스: ['France', 'Fr. Polynesia', 'New Caledonia', 'Fr. S. Antarctic Lands'],
+    스페인: ['Spain'], 포르투갈: ['Portugal'], 독일: ['Germany'], 네덜란드: ['Netherlands'], 이탈리아: ['Italy', 'San Marino', 'Vatican'],
+    오스트리아: ['Austria'], 폴란드: ['Poland'], 헝가리: ['Hungary'], 루마니아: ['Romania'], 세르비아: ['Serbia', 'Kosovo'], 불가리아: ['Bulgaria'],
+    그리스: ['Greece'], 우크라이나: ['Ukraine'], 벨라루스: ['Belarus'], 리투아니아: ['Lithuania'], 노르웨이: ['Norway'], 스웨덴: ['Sweden'],
+    핀란드: ['Finland', 'Åland'], 덴마크: ['Denmark', 'Greenland', 'Faeroe Is.'], 러시아: ['Russia'], 튀르키예: ['Turkey'],
+    조지아: ['Georgia'], 아제르바이잔: ['Azerbaijan'], 이란: ['Iran'], 이라크: ['Iraq'], 시리아: ['Syria'], 이스라엘: ['Israel'],
+    사우디아라비아: ['Saudi Arabia'], 예멘: ['Yemen'], 오만: ['Oman'], 이집트: ['Egypt'], 카자흐스탄: ['Kazakhstan'], 우즈베키스탄: ['Uzbekistan'],
+    투르크메니스탄: ['Turkmenistan'], 아프가니스탄: ['Afghanistan'], 파키스탄: ['Pakistan'], 인도: ['India'], 방글라데시: ['Bangladesh'],
+    스리랑카: ['Sri Lanka'], 중국: ['China', 'Hong Kong', 'Macao'], 몽골: ['Mongolia'], 대한민국: ['South Korea'], 북한: ['North Korea'],
+    일본: ['Japan'], 대만: ['Taiwan'], 베트남: ['Vietnam'], 태국: ['Thailand'], 미얀마: ['Myanmar'], 말레이시아: ['Malaysia'],
+    인도네시아: ['Indonesia'], 필리핀: ['Philippines'], 파푸아뉴기니: ['Papua New Guinea'], 호주: ['Australia', 'Ashmore and Cartier Is.'],
+    뉴질랜드: ['New Zealand'], 모로코: ['Morocco', 'W. Sahara'], 알제리: ['Algeria'], 리비아: ['Libya'], 수단: ['Sudan'], 남수단: ['S. Sudan'],
+    에티오피아: ['Ethiopia'], 소말리아: ['Somalia', 'Somaliland'], 케냐: ['Kenya'], 탄자니아: ['Tanzania'], 콩고민주공화국: ['Dem. Rep. Congo'],
+    앙골라: ['Angola'], 잠비아: ['Zambia'], 모잠비크: ['Mozambique'], 나미비아: ['Namibia'], 남아프리카공화국: ['South Africa'],
+    마다가스카르: ['Madagascar'], 말리: ['Mali'], 니제르: ['Niger'], 차드: ['Chad'], 나이지리아: ['Nigeria'], 가나: ['Ghana'],
+    코트디부아르: ["Côte d'Ivoire"], 세네갈: ['Senegal'], 모리타니: ['Mauritania'], 카메룬: ['Cameroon'], 콩고공화국: ['Congo'],
+    중앙아프리카공화국: ['Central African Rep.'] };
+  // 위 목록에 없는 나라는 자동으로 작은 독립국으로 추가된다 (영문명 → 한국어 이름)
+  const EXTRA_2026 = { Nepal: '네팔', Bhutan: '부탄', Cambodia: '캄보디아', Laos: '라오스', Brunei: '브루나이', 'Timor-Leste': '동티모르',
+    Kyrgyzstan: '키르기스스탄', Tajikistan: '타지키스탄', Armenia: '아르메니아', Jordan: '요르단', Lebanon: '레바논', Kuwait: '쿠웨이트',
+    'United Arab Emirates': '아랍에미리트', Qatar: '카타르', Palestine: '팔레스타인', Cyprus: '키프로스', Tunisia: '튀니지', Zimbabwe: '짐바브웨',
+    Botswana: '보츠와나', Uganda: '우간다', Rwanda: '르완다', Burundi: '부룬디', Eritrea: '에리트레아', Djibouti: '지부티', 'Burkina Faso': '부르키나파소',
+    Guinea: '기니', 'Guinea-Bissau': '기니비사우', 'Sierra Leone': '시에라리온', Liberia: '라이베리아', Togo: '토고', Benin: '베냉', Gabon: '가봉',
+    'Eq. Guinea': '적도기니', Malawi: '말라위', Lesotho: '레소토', eSwatini: '에스와티니', Gambia: '감비아', Honduras: '온두라스',
+    'El Salvador': '엘살바도르', 'Costa Rica': '코스타리카', Belize: '벨리즈', Guyana: '가이아나', Suriname: '수리남', 'Dominican Rep.': '도미니카공화국',
+    Haiti: '아이티', Jamaica: '자메이카', Bahamas: '바하마', Czechia: '체코', Slovakia: '슬로바키아', Croatia: '크로아티아', 'Bosnia and Herz.': '보스니아',
+    Albania: '알바니아', Macedonia: '북마케도니아', Slovenia: '슬로베니아', Montenegro: '몬테네그로', Moldova: '몰도바', Latvia: '라트비아',
+    Estonia: '에스토니아', Switzerland: '스위스', Belgium: '벨기에', Luxembourg: '룩셈부르크', Fiji: '피지', 'Solomon Is.': '솔로몬 제도', Vanuatu: '바누아투' };
+
   // ===== 2026년 세계 =====
   const W2026 = rows([
     // 북아메리카
@@ -305,14 +342,14 @@
 
   // ===== 삼국시대 (475년, 동아시아) =====
   const THREE = rows([
-    ['고구려', '한민족', '불교', '군주제', 30, 7, [[127.5, 40], [124, 42.5], [126, 47]], 1.2, '#3b5ca8'],
-    ['백제', '한민족', '불교', '군주제', 28, 3, [[126.8, 36.3]], 1, '#c9a53a'],
-    ['신라', '한민족', '불교', '군주제', 24, 3, [[129.2, 36]], 1, '#d6352f'],
-    ['가야 연맹', '한민족', '토착신앙', '부족연맹', 22, 1, [[128, 35.2]], 1, '#7a9a4a'],
-    ['왜 (야마토)', '일본인', '신토', '군주제', 22, 3, [[135.5, 34.7], [131, 33.5]], 1, '#e8e8e8'],
-    ['에미시', '일본인', '토착신앙', '부족연맹', 12, 1, [[141, 39.5], [141, 43]]],
-    ['북위', '선비', '불교', '군주제', 34, 9, [[113, 36], [105, 36], [116, 40], [123, 41.5]], 1.2, '#4a4a4a'],
-    ['남조 (송·제)', '한족', '불교', '군주제', 32, 8, [[118.8, 32], [112, 30], [110, 24], [120, 28]], 1.1, '#d6a02e'],
+    ['고구려', '한민족', '불교', '군주제', 30, 7, [[125.7, 39], [127.5, 40.5], [123, 41.2], [125, 43.5], [126.5, 46.5], [129.5, 43]], 1.2, '#3b5ca8'],
+    ['백제', '한민족', '불교', '군주제', 28, 3, [[127, 37.5], [127.1, 36.4], [126.9, 35.2], [126.4, 34.8]], 1, '#c9a53a'],
+    ['신라', '한민족', '불교', '군주제', 24, 3, [[129.2, 35.8], [128.7, 36.6], [129.3, 37.3]], 1, '#d6352f'],
+    ['가야 연맹', '한민족', '토착신앙', '부족연맹', 22, 1, [[128.9, 35.2], [128.3, 35.7], [128.0, 35.1]], 1, '#7a9a4a'],
+    ['왜 (야마토)', '일본인', '신토', '군주제', 22, 3, [[135.5, 34.7], [133.9, 34.7], [131, 33.5], [136.9, 35.2], [139.5, 36]], 1, '#e8e8e8'],
+    ['에미시', '일본인', '토착신앙', '부족연맹', 12, 1, [[140.8, 39.5], [140.5, 37.5], [142, 43.2]]],
+    ['북위', '선비', '불교', '군주제', 34, 9, [[112.5, 34.7], [113.2, 40.1], [108.9, 34.3], [114.5, 36.3], [117, 36.7], [105, 36], [116, 40], [118.5, 41.8]], 1.2, '#4a4a4a'],
+    ['남조 (송·제)', '한족', '불교', '군주제', 32, 8, [[118.8, 32], [112.2, 30.3], [104, 30.7], [113.3, 23.1], [120, 28], [108, 22.8], [105.8, 21]], 1.1, '#d6a02e'],
     ['유연', '몽골', '토착신앙', '부족연맹', 18, 4, [[105, 46], [115, 49], [95, 44]], 0.7],
     ['토욕혼', '선비', '불교', '군주제', 20, 2, [[97, 36.5], [92, 32]]],
     ['물길 (말갈)', '퉁구스', '토착신앙', '부족연맹', 14, 2, [[130, 46], [135, 50]]],
@@ -326,36 +363,86 @@
     ['필리핀 부족들', '말레이', '토착신앙', '부족연맹', 10, 1, [[122, 13]]]
   ]);
 
+
+  // ===== 반란 설정 =====
+  // 시나리오마다 반란 세력의 성격이 다르다. ideology 방식: 정치 이념 반란 / names 방식: 역사적으로 맞는 국가 이름.
+  const IDEO = {
+    communism: { label: '공산', rebel: '공산 혁명군', final: '인민공화국', ideology: '공산주의' },
+    capitalism: { label: '자본', rebel: '자본주의 공화파', final: '자유공화국', ideology: '자본주의' },
+    militarism: { label: '군국', rebel: '군부 쿠데타군', final: '군사정권', ideology: '군국주의' },
+    monarchy: { label: '왕정', rebel: '왕당파 반란군', final: '왕국', ideology: '군주제' },
+    nationalism: { label: '민족', rebel: '민족 독립군', final: '독립국', ideology: '민족주의' },
+    theocracy: { label: '종교', rebel: '종교 봉기군', final: '신정국', ideology: '신권정' },
+    merchant: { label: '상인', rebel: '상인 공화파', final: '상인공화국', ideology: '도시국가' },
+    warlord: { label: '군벌', rebel: '군벌 반란군', final: '군벌국', ideology: '군국주의' }
+  };
+  const REBELS_WW2 = { mode: 'ideology', types: ['communism', 'capitalism', 'militarism', 'monarchy', 'nationalism'] };
+  const REBELS_WW1 = { mode: 'ideology', types: ['communism', 'capitalism', 'militarism', 'monarchy', 'nationalism'] };
+  // 1500년에는 공산주의·자본주의가 없으므로 시대에 맞는 정치 세력만 쓴다
+  const REBELS_AGE = { mode: 'ideology', types: ['monarchy', 'theocracy', 'merchant', 'warlord', 'nationalism'] };
+  // 삼국시대: 모국 이름에 맞는 "신 ○○" 후보. 없으면 default 후보를 쓴다.
+  const REBELS_THREE = {
+    mode: 'names', liberation: '부흥군',
+    default: ['신 고려', '신 부여', '신 옥저', '신 왜', '신 발해'],
+    byParent: {
+      '고구려': ['신 부여', '신 옥저', '신 낙랑', '신 예맥', '신 비류'],
+      '백제': ['신 마한', '신 탐라', '신 온조', '신 대방'],
+      '신라': ['신 진한', '신 탐라', '신 우산', '신 사로'],
+      '가야 연맹': ['신 변한', '신 구야', '신 대가야', '신 안라'],
+      '왜 (야마토)': ['신 왜', '신 구노', '신 쿠마소', '신 이즈모', '신 쓰쿠시'],
+      '에미시': ['신 하야토', '신 에조', '신 쓰가루'],
+      '북위': ['신 후연', '신 북연', '신 하(夏)', '신 저(氐)', '신 대(代)'],
+      '남조 (송·제)': ['신 오(吳)', '신 촉(蜀)', '신 형주', '신 민월', '신 남월'],
+      '유연': ['신 흉노', '신 철륵', '신 정령', '신 오환'],
+      '토욕혼': ['신 강(羌)', '신 당항', '신 선령'],
+      '물길 (말갈)': ['신 숙신', '신 읍루', '신 흑수'],
+      '거란': ['신 해(奚)', '신 실위', '신 거란'],
+      '실위 · 부여계': ['신 북부여', '신 동부여', '신 실위'],
+      '임읍 (참파)': ['신 교지', '신 구덕', '신 참파'],
+      '부남': ['신 진랍', '신 드바라바티', '신 크메르'],
+      '파간 · 미얀마': ['신 퓨', '신 몬', '신 파간'],
+      '카마루파': ['신 아홈', '신 캄타'],
+      '대만 · 류큐 부족': ['신 류큐', '신 야에야마'],
+      '필리핀 부족들': ['신 루손', '신 타갈로그', '신 비사야']
+    }
+  };
+
+  // [식민지, 종주국] — 시작할 때 이미 맺어진 종속 관계
+  const COLONIES_WW2 = [['영국령 인도', '영국'], ['영국령 말라야', '영국'], ['영국령 아프리카', '영국'], ['프랑스령 인도차이나', '프랑스'],
+    ['프랑스령 아프리카', '프랑스'], ['네덜란드령 동인도', '네덜란드'], ['포르투갈령 아프리카', '포르투갈'], ['이탈리아령 아프리카', '이탈리아']];
+  const COLONIES_WW1 = [['영국령 인도', '영국'], ['영국령 아프리카', '영국'], ['프랑스령 인도차이나', '프랑스'], ['프랑스령 아프리카', '프랑스'],
+    ['네덜란드령 동인도', '네덜란드'], ['독일령 아프리카', '독일 제국'], ['포르투갈령 아프리카', '포르투갈'], ['이탈리아령 아프리카', '이탈리아']];
+
   const LIST = [
-    { id: 'world2026', name: '2026년 세계', icon: '🌍', year: 2026, mapId: 'world', provSpacing: 11, nations: W2026,
+    { id: 'world2026', name: '2026년 세계', icon: '🌍', year: 2026, mapId: 'world', provSpacing: 11, nations: W2026, borders: { map: B, extras: EXTRA_2026 },
       desc: '오늘날의 세계. 약 100개 국가가 실제 영토로 시작.',
       alliances: [
         { name: '북대서양 동맹', members: ['미국', '캐나다', '영국', '프랑스', '독일', '이탈리아', '폴란드', '튀르키예'] },
         { name: '러시아 · 벨라루스 동맹', members: ['러시아', '벨라루스'] }
       ],
       wars: [['러시아', '우크라이나']] },
-    { id: 'ww2', name: '제2차 세계대전', icon: '✈️', year: 1939, mapId: 'world', provSpacing: 11, nations: WW2,
+    { id: 'ww2', name: '제2차 세계대전', icon: '✈️', year: 1939, mapId: 'world', provSpacing: 11, nations: WW2, borders: { source: 'ww2' }, rebels: REBELS_WW2, colonies: COLONIES_WW2,
       desc: '1939년. 추축국과 연합국이 맞서는 전 세계 대전의 서막.',
       alliances: [
         { name: '추축국', members: ['독일', '이탈리아', '일본 제국', '헝가리', '루마니아', '불가리아', '이탈리아령 아프리카'] },
         { name: '연합국', members: ['영국', '프랑스', '폴란드', '캐나다', '호주', '뉴질랜드', '남아프리카', '영국령 인도'] }
       ],
       wars: [['독일', '폴란드'], ['일본 제국', '중화민국']] },
-    { id: 'ww1', name: '제1차 세계대전', icon: '🎖️', year: 1914, mapId: 'world', provSpacing: 11, nations: WW1,
+    { id: 'ww1', name: '제1차 세계대전', icon: '🎖️', year: 1914, mapId: 'world', provSpacing: 11, nations: WW1, borders: { source: 'ww1' }, rebels: REBELS_WW1, colonies: COLONIES_WW1,
       desc: '1914년. 제국들의 동맹이 얽힌 유럽, 사라예보의 총성 직전.',
       alliances: [
         { name: '삼국협상', members: ['영국', '프랑스', '러시아 제국', '세르비아', '일본 제국'] },
         { name: '동맹국', members: ['독일 제국', '오스트리아-헝가리', '오스만 제국'] }
       ],
       wars: [['오스트리아-헝가리', '세르비아']] },
-    { id: 'age', name: '대항해시대', icon: '⛵', year: 1500, mapId: 'world', provSpacing: 11, nations: AGE,
+    { id: 'age', name: '대항해시대', icon: '⛵', year: 1500, mapId: 'world', provSpacing: 11, nations: AGE, borders: { source: 'age' }, rebels: REBELS_AGE,
       desc: '1500년경. 유럽의 왕국들이 바다로 나서고, 아즈텍·잉카·명이 공존한다.',
       alliances: [], wars: [] },
-    { id: 'three', name: '삼국시대', icon: '🏯', year: 475, mapId: 'eastasia', provSpacing: 16, nations: THREE,
+    { id: 'three', name: '삼국시대', icon: '🏯', year: 475, mapId: 'eastasia', provSpacing: 16, nations: THREE, borders: { source: 'three', drop: [['북위', 121.4, 140, 38, 48]] }, rebels: REBELS_THREE, colonyWord: '속국',
       desc: '475년경 동아시아. 고구려·백제·신라와 북위·남조가 겨루고, 나제동맹이 맺어져 있다.',
       alliances: [{ name: '나제동맹', members: ['신라', '백제'] }],
       wars: [['고구려', '백제'], ['북위', '남조 (송·제)']] }
   ];
 
-  window.WFScenarios = { list: LIST, get: id => LIST.find(s => s.id === id) || null };
+  window.WFScenarios = { list: LIST, ideo: IDEO, get: id => LIST.find(s => s.id === id) || null };
 })();

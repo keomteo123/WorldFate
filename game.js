@@ -18,6 +18,29 @@
     pause: document.getElementById('pause'),
   };
 
+  // ===== 게임 규칙 (설정 창에서 바꿈, 이 기기에 저장) =====
+  const RULES_KEY = 'wf_rules';
+  const rules = { colonies: true, disasters: true, eventRate: 1, techSpeed: 1 };
+  try { Object.assign(rules, JSON.parse(localStorage.getItem(RULES_KEY)) || {}); } catch (e) {}
+  window.WFRules = {
+    get: () => rules,
+    set(patch) { Object.assign(rules, patch); try { localStorage.setItem(RULES_KEY, JSON.stringify(rules)); } catch (e) {} }
+  };
+  const tr = s => (window.WFI18n ? window.WFI18n.tr(s) : s);
+
+  // 기술 시대: 기술력이 문턱을 넘으면 시대가 바뀌고, 시대마다 인구·경제·군사가 눈에 띄게 달라진다
+  const ERAS = [
+    { at: 0, name: '고대', pop: 1.0, gold: 1.0, mil: 1.0 },
+    { at: 15, name: '중세', pop: 1.15, gold: 1.1, mil: 1.1 },
+    { at: 30, name: '근세', pop: 1.3, gold: 1.25, mil: 1.25 },
+    { at: 45, name: '산업 시대', pop: 1.6, gold: 1.5, mil: 1.5 },
+    { at: 60, name: '현대', pop: 1.9, gold: 1.8, mil: 1.8 },
+    { at: 78, name: '정보화 시대', pop: 2.2, gold: 2.1, mil: 2.1 },
+    { at: 92, name: '미래', pop: 2.5, gold: 2.5, mil: 2.4 }
+  ];
+  const eraIndex = t => { let i = 0; for (let k = 0; k < ERAS.length; k++) if (t >= ERAS[k].at) i = k; return i; };
+  const eraOf = n => ERAS[eraIndex(n.tech)];
+
   const MAP_W = 1200;
   const MAP_H = 720;
   const nationNames = [
@@ -377,7 +400,7 @@
   function getDisplayNationName(n) {
     const group = getNationGroup(n);
     if (group) return group.name;
-    const prefix = n.isColony ? '[식민지] ' : '';
+    const prefix = isSubject(n) ? `[${colonyWord()}] ` : '';
     return `${prefix}${buildDisplayName(n)}`;
   }
 
@@ -514,21 +537,136 @@
     return null;
   }
 
+  function pushScenarioNation(r, pts) {
+    nations.push({
+      id: nations.length, name: r.name, color: r.color || pickNationColor(), species: r.eth, ideology: r.ideo,
+      seedX: pts[0].x, seedY: pts[0].y, seeds: pts, reach: r.reach || 1,
+      population: 80 + r.pw * 45 + rand(0, 40), army: 80, gold: 150 + r.pw * 80 + rand(0, 100),
+      tech: r.tech, pw: r.pw, stability: rand(65, 90), power: 0, age: 0, alive: true, cities: [],
+      capital: { x: pts[0].x, y: pts[0].y }, relations: {}, plague: 0, warExhaustion: 0,
+      allianceId: null, unionId: null, religion: r.rel, happiness: rand(55, 80),
+      demographics: { children: 0.32, adults: 0.53, elders: 0.15 }, tradeIncome: 0, lowStabYears: 0, isRebel: false
+    });
+  }
+
   function createScenarioNations(sc, def) {
     const P = WFMaps.projection(def, MAP_W, MAP_H);
     for (const r of sc.nations) {
       const pts = r.seeds.map(([lo, la]) => snapToLand(P.x(lo), P.y(la))).filter(Boolean);
       if (!pts.length) continue;
-      nations.push({
-        id: nations.length, name: r.name, color: r.color || pickNationColor(), species: r.eth, ideology: r.ideo,
-        seedX: pts[0].x, seedY: pts[0].y, seeds: pts, reach: r.reach || 1,
-        population: 80 + r.pw * 45 + rand(0, 40), army: 80, gold: 150 + r.pw * 80 + rand(0, 100),
-        tech: r.tech, stability: rand(65, 90), power: 0, age: 0, alive: true, cities: [],
-        capital: { x: pts[0].x, y: pts[0].y }, relations: {}, plague: 0, warExhaustion: 0,
-        allianceId: null, unionId: null, religion: r.rel, happiness: rand(55, 80),
-        demographics: { children: 0.32, adults: 0.53, elders: 0.15 }, tradeIncome: 0, lowStabYears: 0, isRebel: false
-      });
+      pushScenarioNation(r, pts);
     }
+  }
+
+  // 실제 국경: 나라 폴리곤으로 칸의 주인을 정한다. 목록에 없는 나라는 작은 독립국으로 추가하거나 가장 가까운 나라에 붙인다.
+  function applyRealBorders(sc, def) {
+    const bd = sc.borders;
+    const hist = bd.source ? (window.WF_HIST_MAP || {})[bd.source] : null; // 역사 국경이면 historic-data.js의 표를 쓴다
+    const bmap = hist ? hist.map : bd.map;
+    const extras = hist ? hist.extras : (bd.extras || {});
+    const rc = WFMaps.rasterizeCountries(def, MAP_W, MAP_H, land, hist ? bd.source : null);
+    const toNation = new Map();
+    for (const n of nations) for (const en of (bmap[n.name] || [])) toNation.set(en, n.id);
+
+    const stat = new Map();
+    for (let i = 0; i < land.length; i++) {
+      if (!land[i] || rc.ids[i] < 0) continue;
+      const ci = rc.ids[i];
+      let st = stat.get(ci);
+      if (!st) { st = { n: 0, sx: 0, sy: 0 }; stat.set(ci, st); }
+      st.n++; st.sx += i % MAP_W; st.sy += (i / MAP_W) | 0;
+    }
+    const mapped = nations.slice();
+    const nearestMapped = (x, y) => {
+      let best = mapped[0], bd = Infinity;
+      for (const m of mapped) {
+        const d = (m.capital.x - x) ** 2 + (m.capital.y - y) ** 2;
+        if (d < bd) { bd = d; best = m; }
+      }
+      return best;
+    };
+    const ownCellNear = (ci, x, y) => {
+      let best = -1, bd = Infinity;
+      for (let i = 0; i < land.length; i++) {
+        if (!land[i] || rc.ids[i] !== ci) continue;
+        const d = ((i % MAP_W) - x) ** 2 + (((i / MAP_W) | 0) - y) ** 2;
+        if (d < bd) { bd = d; best = i; }
+      }
+      return best;
+    };
+    for (const [ci, st] of stat) {
+      const en = rc.names[ci];
+      if (toNation.has(en)) continue;
+      const cx = st.sx / st.n, cy = st.sy / st.n;
+      const near = nearestMapped(cx, cy);
+      if (extras[en] && st.n >= (hist ? 3 : 6)) {
+        const cell = ownCellNear(ci, cx, cy);
+        pushScenarioNation({ name: extras[en], eth: near.species, rel: near.religion, ideo: '공화정', tech: Math.max(20, Math.round(near.tech * 0.85)), pw: 1, reach: 1 },
+          [{ x: cell % MAP_W, y: (cell / MAP_W) | 0 }]);
+        toNation.set(en, nations.length - 1);
+      } else if (!hist) {
+        toNation.set(en, near.id);
+      }
+    }
+
+    owner.fill(-1);
+    for (let i = 0; i < land.length; i++) {
+      if (!land[i] || rc.ids[i] < 0) continue;
+      const id = toNation.get(rc.names[rc.ids[i]]);
+      if (id !== undefined) owner[i] = id;
+    }
+
+  }
+
+  // 데이터가 부정확한 구역은 지정한 나라의 칸을 비워 씨앗 방식으로 다시 채운다: drop = [[나라, 경도 최소, 경도 최대, 위도 최소, 위도 최대], ...]
+  function dropBorderCells(sc, def) {
+    const P = WFMaps.projection(def, MAP_W, MAP_H);
+    for (const [name, lo0, lo1, la0, la1] of sc.borders.drop || []) {
+      const n = nations.find(m => m.name === name);
+      if (!n) continue;
+      const x0 = Math.max(0, Math.floor(P.x(lo0))), x1 = Math.min(MAP_W - 1, Math.ceil(P.x(lo1)));
+      const y0 = Math.max(0, Math.floor(P.y(la1))), y1 = Math.min(MAP_H - 1, Math.ceil(P.y(la0)));
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (owner[idx(x, y)] === n.id) owner[idx(x, y)] = -1;
+    }
+  }
+
+  // 국경 적용 뒤 마무리: 수도(첫 씨앗)가 자기 땅 밖이면 옮기고, 땅이 전혀 없는 나라는 제외한다
+  function finalizeBorders() {
+    // 국경 데이터에 없어서 땅을 못 얻은 나라(작은 섬나라 등)는 첫 씨앗 둘레의 땅을 조금 떼어 받는다
+    const got = new Uint8Array(nations.length);
+    for (let i = 0; i < owner.length; i++) if (owner[i] >= 0) got[owner[i]] = 1;
+    for (const n of nations) {
+      if (got[n.id] || n.seedX === undefined) continue;
+      const R = 4;
+      for (let dy = -R; dy <= R; dy++) {
+        for (let dx = -R; dx <= R; dx++) {
+          const x = n.seedX + dx, y = n.seedY + dy;
+          if (dx * dx + dy * dy > R * R || !inside(x, y) || !land[idx(x, y)]) continue;
+          owner[idx(x, y)] = n.id;
+        }
+      }
+    }
+    // 수도(첫 씨앗)가 자기 땅 밖에 떨어진 나라는 가장 가까운 자기 땅으로 옮긴다. 땅이 전혀 없는 나라는 제외한다.
+    const has = new Uint8Array(nations.length);
+    for (let i = 0; i < owner.length; i++) if (owner[i] >= 0) has[owner[i]] = 1;
+    const fix = nations.filter(n => has[n.id] && owner[idx(n.seedX, n.seedY)] !== n.id);
+    if (fix.length) {
+      const bestD = new Map(fix.map(n => [n.id, Infinity])), bestI = new Map();
+      const byId = new Map(fix.map(n => [n.id, n]));
+      for (let i = 0; i < owner.length; i++) {
+        const n = byId.get(owner[i]);
+        if (!n) continue;
+        const d = ((i % MAP_W) - n.seedX) ** 2 + (((i / MAP_W) | 0) - n.seedY) ** 2;
+        if (d < bestD.get(n.id)) { bestD.set(n.id, d); bestI.set(n.id, i); }
+      }
+      for (const n of fix) {
+        const i = bestI.get(n.id);
+        n.seedX = i % MAP_W; n.seedY = (i / MAP_W) | 0;
+        n.capital = { x: n.seedX, y: n.seedY };
+        n.seeds = [{ x: n.seedX, y: n.seedY }];
+      }
+    }
+    for (const n of nations) if (!has[n.id]) n.alive = false;
   }
 
   function applyScenarioDiplomacy(sc) {
@@ -539,16 +677,27 @@
       const group = ids.length ? getNationGroup(nations[ids[0]]) : null;
       if (group) { group.name = g.name; group.color = nations[ids[0]].color; }
     }
+    for (const [c, o] of sc.colonies || []) {
+      if (byName.has(c) && byName.has(o)) {
+        const cn = nations[byName.get(c)], on = nations[byName.get(o)];
+        cn.overlordId = on.id; cn.isColony = true; cn.colonySince = year;
+      }
+    }
     for (const [a, b] of sc.wars || []) {
       if (byName.has(a) && byName.has(b)) forceWarBetween(byName.get(a), byName.get(b));
     }
   }
 
-  function assignTerritories() {
+  // keepOwned: 이미 주인이 정해진 칸(실제 국경)은 그대로 두고, 아직 땅이 없는 나라만 씨앗에서 남은 땅을 넓힌다
+  function assignTerritories(keepOwned) {
     const INF = 1e30;
     const dist = new Float64Array(MAP_W * MAP_H);
     dist.fill(INF);
-    owner.fill(-1);
+    const pre = keepOwned ? new Uint8Array(MAP_W * MAP_H) : null;
+    const covered = new Uint8Array(nations.length);
+    if (keepOwned) {
+      for (let i = 0; i < owner.length; i++) if (owner[i] >= 0) { pre[i] = 1; covered[owner[i]] = 1; }
+    } else owner.fill(-1);
 
     const heap = [];
     function push(node) {
@@ -583,8 +732,10 @@
 
     const reachOf = nations.map(n => n.reach || 1);
     for (const n of nations) {
+      if (keepOwned && covered[n.id]) continue;
       for (const sd of (n.seeds || [{ x: n.seedX, y: n.seedY }])) {
         const i = idx(sd.x, sd.y);
+        if (pre && pre[i]) continue;
         dist[i] = 0;
         owner[i] = n.id;
         push({ d: 0, i, n: n.id });
@@ -600,7 +751,7 @@
         const nx = x + d[0], ny = y + d[1];
         if (!inside(nx, ny)) continue;
         const ni = idx(nx, ny);
-        if (!land[ni]) continue;
+        if (!land[ni] || (pre && pre[ni])) continue;
         const nd = q.d + d[2] * cellsCost[ni] / reachOf[q.n];
         if (nd < dist[ni]) {
           dist[ni] = nd;
@@ -659,7 +810,7 @@
       }
     }
     // 처음 군대 규모도 영토 수에 맞춘다
-    for (const n of nations) n.army = desiredArmyFor(provinceCount(n.id), false) * rand(0.85, 1.05);
+    for (const n of nations) n.army = desiredArmyFor(provinceCount(n.id), false, n) * rand(0.85, 1.05);
     refreshMilitaryUnits();
   }
 
@@ -669,12 +820,13 @@
   let provinces = [];      // { id, sx, sy, cx, cy, cells:Int32Array, adj:[], owner, capture:null }
   let provVersion = 0;     // 구역 소유가 바뀔 때마다 증가 (이웃 캐시 무효화용)
 
-  function generateProvinces(snapOwners) {
+  function generateProvinces(snapOwners, bordered) {
     const N = MAP_W * MAP_H;
     provOf.fill(-1);
     provinces = [];
 
-    // 1) 육지 덩어리 라벨링
+    // 1) 육지 덩어리 라벨링 (실제 국경 모드에서는 같은 나라 땅끼리만 한 덩어리 — 구역이 국경을 넘지 않게)
+    const sameReg = (a, b) => !bordered || owner[a] === owner[b];
     const comp = new Int32Array(N).fill(-1);
     const compCells = [];
     for (let i = 0; i < N; i++) {
@@ -687,10 +839,10 @@
         const c = stack.pop();
         list.push(c);
         const x = c % MAP_W;
-        if (x > 0 && land[c - 1] && comp[c - 1] < 0) { comp[c - 1] = id; stack.push(c - 1); }
-        if (x < MAP_W - 1 && land[c + 1] && comp[c + 1] < 0) { comp[c + 1] = id; stack.push(c + 1); }
-        if (c >= MAP_W && land[c - MAP_W] && comp[c - MAP_W] < 0) { comp[c - MAP_W] = id; stack.push(c - MAP_W); }
-        if (c < N - MAP_W && land[c + MAP_W] && comp[c + MAP_W] < 0) { comp[c + MAP_W] = id; stack.push(c + MAP_W); }
+        if (x > 0 && land[c - 1] && comp[c - 1] < 0 && sameReg(c, c - 1)) { comp[c - 1] = id; stack.push(c - 1); }
+        if (x < MAP_W - 1 && land[c + 1] && comp[c + 1] < 0 && sameReg(c, c + 1)) { comp[c + 1] = id; stack.push(c + 1); }
+        if (c >= MAP_W && land[c - MAP_W] && comp[c - MAP_W] < 0 && sameReg(c, c - MAP_W)) { comp[c - MAP_W] = id; stack.push(c - MAP_W); }
+        if (c < N - MAP_W && land[c + MAP_W] && comp[c + MAP_W] < 0 && sameReg(c, c + MAP_W)) { comp[c + MAP_W] = id; stack.push(c + MAP_W); }
       }
       compCells.push(list);
     }
@@ -797,7 +949,7 @@
       for (const c of r.cells) {
         const x = c % MAP_W;
         for (const nb of [x > 0 ? c - 1 : -1, x < MAP_W - 1 ? c + 1 : -1, c >= MAP_W ? c - MAP_W : -1, c < N - MAP_W ? c + MAP_W : -1]) {
-          if (nb < 0 || raw[nb] < 0 || raw[nb] === r.pid) continue;
+          if (nb < 0 || raw[nb] < 0 || raw[nb] === r.pid || (bordered && owner[nb] !== owner[c])) continue;
           tally.set(raw[nb], (tally.get(raw[nb]) || 0) + 1);
         }
       }
@@ -811,7 +963,7 @@
     // 6) 소유 구역 결정: 칸 소유자의 다수결. 처음 생성할 때는 국경이 구역 경계에 딱 맞도록 정리한다.
     for (const p of provinces) p.owner = majorityOwner(p);
     if (snapOwners) {
-      for (const n of nations) {
+      for (const n of bordered ? [] : nations) {
         if (!n.alive || n.seedX === undefined) continue;
         for (const sd of (n.seeds || [{ x: n.seedX, y: n.seedY }])) {
           const pid = provOf[idx(clamp(Math.floor(sd.x), 0, MAP_W - 1), clamp(Math.floor(sd.y), 0, MAP_H - 1))];
@@ -939,8 +1091,16 @@
   const MAX_DOTS_PER_NATION = 80;
 
   // 군대 규모는 영토(구역) 수에 비례한다. 전쟁 중이면 더 많이 동원한다.
-  function desiredArmyFor(provs, atWar) {
-    return 8 + provs * ARMY_PER_PROVINCE * (atWar ? 1.3 : 1);
+  // 군대는 땅 넓이만이 아니라 국력(pw)·인구·기술 시대에 좌우된다. 땅은 제곱근으로만 반영해 넓다고 무조건 이기지 않게 한다.
+  function desiredArmyFor(provs, atWar, n) {
+    const pw = n && n.pw != null ? n.pw : 3;
+    let base = 8 + ARMY_PER_PROVINCE * 3.2 * Math.sqrt(provs) + pw * 38;
+    if (n) {
+      base *= 0.75 + 0.25 * eraOf(n).mil;
+      base *= clamp(0.6 + Math.sqrt(n.population / Math.max(40, provs * 60)) * 0.4, 0.6, 1.4);
+      base = Math.max(base, n.godArmy || 0); // 신이 내려준 군대는 영토가 작아도 줄지 않는다
+    }
+    return base * (atWar ? 1.3 : 1);
   }
   let provSyncNeeded = false;
   let armySerial = 0;
@@ -1065,10 +1225,16 @@
       const wanted = opts.nationCount || (def.kind === 'procedural' ? irand(Math.max(8, (def.nations || 14) - 3), (def.nations || 14) + 3) : def.nations);
       createNations(wanted);
     }
+    const bordered = !!(sc && sc.borders && def.kind === 'real');
+    if (bordered) {
+      applyRealBorders(sc, def);
+      dropBorderCells(sc, def);
+      if (sc.borders.source) assignTerritories(true); // 역사 국경: 국경 데이터에 없는 나라(원주민 등)는 씨앗으로 남은 땅을 채운다
+      finalizeBorders();
+    } else assignTerritories();
     initialNationCount = nations.length;
-    assignTerritories();
     claimUnclaimedLand();
-    generateProvinces(true);
+    generateProvinces(true, bordered);
     generateCities();
     fitCamera();
     logEvent(sc ? `${sc.name} — ${sc.year}년의 세계가 펼쳐진다.` : `신이 새로운 세계를 창조했다. (${currentMap.name})`, 'god');
@@ -1274,6 +1440,75 @@
     return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
   }
 
+  // 국경선: 서로 다른 나라 땅이 맞닿은 칸 경계를 이어 붙여 벡터 경로로 만든다 (확대해도 또렷하게, 전쟁 중인 국경은 붉게)
+  let borderPath = null, warBorderPath = null;
+  function buildBorderPaths() {
+    const warPairs = new Set();
+    for (const w of wars) if (w.active) { warPairs.add(w.a * 8192 + w.b); warPairs.add(w.b * 8192 + w.a); }
+    const kindOf = (a, b) => {
+      if (a === b) return 0;
+      if (a < 0 || b < 0) return 1;
+      return warPairs.has(a * 8192 + b) ? 2 : 1;
+    };
+    const paths = [null, new Path2D(), new Path2D()];
+    const vStart = new Int32Array(MAP_W + 1).fill(-1), vKind = new Uint8Array(MAP_W + 1);
+    const flushV = (x, y) => {
+      if (vStart[x] >= 0) { paths[vKind[x]].moveTo(x, vStart[x]); paths[vKind[x]].lineTo(x, y); vStart[x] = -1; vKind[x] = 0; }
+    };
+    for (let y = 0; y < MAP_H; y++) {
+      let hStart = -1, hKind = 0;
+      for (let x = 0; x < MAP_W; x++) {
+        const i = y * MAP_W + x;
+        const isLand = land[i] === 1;
+        const o = isLand ? owner[i] : -2;
+        // 아래쪽 경계(수평선)
+        let kh = 0;
+        if (isLand && y < MAP_H - 1 && land[i + MAP_W]) kh = kindOf(o, owner[i + MAP_W]);
+        if (kh !== hKind) {
+          if (hKind) { paths[hKind].moveTo(hStart, y + 1); paths[hKind].lineTo(x, y + 1); }
+          hStart = x; hKind = kh;
+        }
+        // 오른쪽 경계(수직선)
+        let kv = 0;
+        if (isLand && x < MAP_W - 1 && land[i + 1]) kv = kindOf(o, owner[i + 1]);
+        const bx = x + 1;
+        if (kv !== vKind[bx]) {
+          flushV(bx, y);
+          if (kv) { vStart[bx] = y; vKind[bx] = kv; }
+        }
+      }
+      if (hKind) { paths[hKind].moveTo(hStart, y + 1); paths[hKind].lineTo(MAP_W, y + 1); }
+    }
+    for (let x = 0; x <= MAP_W; x++) flushV(x, MAP_H);
+    borderPath = paths[1];
+    warBorderPath = paths[2];
+  }
+
+  function drawBorders() {
+    if (!borderPath) return;
+    ctx.save();
+    ctx.translate(camera.x, camera.y);
+    ctx.scale(camera.zoom, camera.zoom);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    const core = clamp(1.3 + camera.zoom * 0.45, 1.5, 3.4) / camera.zoom;
+    ctx.strokeStyle = 'rgba(255,246,222,0.6)';
+    ctx.lineWidth = core * 2.6;
+    ctx.stroke(borderPath);
+    ctx.strokeStyle = 'rgba(46,26,12,0.95)';
+    ctx.lineWidth = core;
+    ctx.stroke(borderPath);
+    if (warBorderPath) {
+      ctx.strokeStyle = 'rgba(255,238,220,0.7)';
+      ctx.lineWidth = core * 2.8;
+      ctx.stroke(warBorderPath);
+      ctx.strokeStyle = 'rgba(196,40,28,0.98)';
+      ctx.lineWidth = core * 1.15;
+      ctx.stroke(warBorderPath);
+    }
+    ctx.restore();
+  }
+
   function renderWorld() {
     if (baseDirty) buildBase();
     const data = worldImage.data;
@@ -1338,18 +1573,9 @@
 
     wctx.putImageData(worldImage, 0, 0);
     wctx.drawImage(iconCanvas, 0, 0);
+    buildBorderPaths();
 
-    nationLabels = [];
-    for (const n of nations) {
-      if (!n || !n.alive || count[n.id] < 120) continue;
-      let cx = sumX[n.id] / count[n.id];
-      let cy = sumY[n.id] / count[n.id];
-      if (owner[idx(Math.round(cx), Math.round(cy))] !== n.id) {
-        const cap = n.cities && (n.cities.find(c => c.capital) || n.cities[0]);
-        if (cap) { cx = cap.x; cy = cap.y; }
-      }
-      nationLabels.push({ name: n.name, x: cx, y: cy, size: Math.sqrt(count[n.id]) });
-    }
+    buildNationLabels();
   }
 
 
@@ -1367,6 +1593,7 @@
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(worldCanvas, camera.x, camera.y, MAP_W * camera.zoom, MAP_H * camera.zoom);
 
+    drawBorders();
     drawMapFrame();
     drawNationLabels();
     drawCities();
@@ -1449,28 +1676,200 @@
     }
   }
 
-  // 국가명: 영토 중심에 큰 자간의 고지도풍 글씨
+  // ===== 국가명 라벨: 영토의 긴 방향을 따라 영토 안에 쏙 들어가게 (하츠 오브 아이언 방식) =====
+  const labelMeasure = document.createElement('canvas').getContext('2d');
+  const advCache = new Map();
+  const LABEL_FONT = 'Georgia, "Noto Serif KR", "Noto Sans CJK KR", serif';
+  const LABEL_SPACING = 0.14;       // 글자 사이 간격 (글자 크기 대비)
+  const LABEL_BIN = 5;              // 영토를 긴 축으로 썰 때의 칸 너비(지도 칸)
+  function charAdv(ch) {
+    let v = advCache.get(ch);
+    if (v == null) {
+      labelMeasure.font = `bold 100px ${LABEL_FONT}`;
+      v = labelMeasure.measureText(ch).width / 100;
+      advCache.set(ch, v);
+    }
+    return v;
+  }
+
+  // 한 나라의 가장 큰 덩어리(맞닿은 구역들)
+  function largestRegion(list) {
+    const set = new Set(list.map(p => p.id));
+    const seen = new Set();
+    let best = null, bestCells = 0;
+    for (const p of list) {
+      if (seen.has(p.id)) continue;
+      const comp = [];
+      const stack = [p];
+      seen.add(p.id);
+      let cells = 0;
+      while (stack.length) {
+        const c = stack.pop();
+        comp.push(c);
+        cells += c.cells.length;
+        for (const a of c.adj) if (set.has(a) && !seen.has(a)) { seen.add(a); stack.push(provinces[a]); }
+      }
+      if (cells > bestCells) { bestCells = cells; best = comp; }
+    }
+    return best;
+  }
+
+  function buildNationLabel(n, list) {
+    const comp = largestRegion(list);
+    if (!comp) return null;
+    const xs = [], ys = [];
+    for (const p of comp) {
+      for (let k = 0; k < p.cells.length; k += 2) {
+        const c = p.cells[k];
+        if (owner[c] !== n.id) continue;
+        xs.push(c % MAP_W); ys.push((c / MAP_W) | 0);
+      }
+    }
+    const m = xs.length;
+    if (m < 10) return null;
+    let mx = 0, my = 0;
+    for (let i = 0; i < m; i++) { mx += xs[i]; my += ys[i]; }
+    mx /= m; my /= m;
+    let sxx = 0, syy = 0, sxy = 0;
+    for (let i = 0; i < m; i++) { const dx = xs[i] - mx, dy = ys[i] - my; sxx += dx * dx; syy += dy * dy; sxy += dx * dy; }
+    const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+    const ct = Math.cos(theta), st = Math.sin(theta);
+
+    // 긴 축(u)을 따라 얇게 썰어 각 조각의 중심선(v)과 두께를 구한다
+    let umin = Infinity, umax = -Infinity;
+    const us = new Float32Array(m), vs = new Float32Array(m);
+    for (let i = 0; i < m; i++) {
+      const dx = xs[i] - mx, dy = ys[i] - my;
+      const u = dx * ct + dy * st, v = -dx * st + dy * ct;
+      us[i] = u; vs[i] = v;
+      if (u < umin) umin = u;
+      if (u > umax) umax = u;
+    }
+    const nb = Math.ceil((umax - umin) / LABEL_BIN) + 1;
+    const cnt = new Float32Array(nb), lo = new Float32Array(nb).fill(Infinity), hi = new Float32Array(nb).fill(-Infinity);
+    for (let i = 0; i < m; i++) {
+      const b = Math.floor((us[i] - umin) / LABEL_BIN);
+      cnt[b]++;
+      if (vs[i] < lo[b]) lo[b] = vs[i];
+      if (vs[i] > hi[b]) hi[b] = vs[i];
+    }
+    // 끊김(2칸 이하)은 이어 붙인 가장 묵직한 구간
+    let bestRun = null, bestW = -1, runStart = -1, last = -1, w = 0;
+    const flush = () => { if (runStart >= 0 && w > bestW) { bestW = w; bestRun = [runStart, last]; } };
+    for (let b = 0; b < nb; b++) {
+      if (!cnt[b]) continue;
+      if (runStart >= 0 && b - last > 3) { flush(); runStart = -1; w = 0; }
+      if (runStart < 0) runStart = b;
+      last = b; w += cnt[b];
+    }
+    flush();
+    if (!bestRun) return null;
+    const [r0, r1] = bestRun;
+    const mid = new Float32Array(nb), thick = new Float32Array(nb);
+    for (let b = r0; b <= r1; b++) {
+      if (cnt[b]) { mid[b] = (lo[b] + hi[b]) / 2; thick[b] = Math.min(cnt[b] * 2 / LABEL_BIN, hi[b] - lo[b] + 1); }
+      else { mid[b] = NaN; thick[b] = 0; }
+    }
+    for (let b = r0; b <= r1; b++) { // 빈 조각은 이웃 값으로 채운다
+      if (!Number.isNaN(mid[b])) continue;
+      let a = b - 1, c = b + 1;
+      while (a >= r0 && Number.isNaN(mid[a])) a--;
+      while (c <= r1 && Number.isNaN(mid[c])) c++;
+      mid[b] = (mid[a] + mid[c]) / 2;
+    }
+    const sm = new Float32Array(nb), smT = new Float32Array(nb); // 부드럽게
+    for (let b = r0; b <= r1; b++) {
+      let sv = 0, st2 = 0, k = 0;
+      for (let d = -3; d <= 3; d++) { const q = b + d; if (q < r0 || q > r1) continue; sv += mid[q]; st2 += thick[q]; k++; }
+      sm[b] = sv / k; smT[b] = st2 / k;
+    }
+
+    const chars = [...tr(n.name)];
+    const adv = chars.map(ch => charAdv(ch) + LABEL_SPACING);
+    const W1 = adv.reduce((a, b) => a + b, 0) - LABEL_SPACING;
+    const runU0 = umin + r0 * LABEL_BIN, runU1 = umin + (r1 + 1) * LABEL_BIN;
+    const runLen = runU1 - runU0;
+    let wsum = 0, cu = 0;
+    for (let b = r0; b <= r1; b++) { wsum += cnt[b]; cu += cnt[b] * (umin + (b + 0.5) * LABEL_BIN); }
+    cu /= Math.max(1, wsum);
+
+    let size = Math.min(runLen * 0.92 / W1, 90);
+    let uStart = 0;
+    for (let it = 0; it < 14; it++) {
+      const L = size * W1;
+      const c = clamp(cu, runU0 + L / 2, runU1 - L / 2);
+      uStart = c - L / 2;
+      const b0 = clamp(Math.floor((uStart - umin) / LABEL_BIN), r0, r1), b1 = clamp(Math.floor((uStart + L - umin) / LABEL_BIN), r0, r1);
+      let sum = 0, minT = Infinity;
+      for (let b = b0; b <= b1; b++) { sum += smT[b]; if (smT[b] < minT) minT = smT[b]; }
+      const avgT = sum / (b1 - b0 + 1);
+      if (avgT >= size * 1.05 && minT >= size * 0.6) break;
+      size *= 0.92;
+    }
+    if (size < 2) return null;
+
+    const spine = u => { // u에서의 중심선 위치
+      const f = clamp((u - umin) / LABEL_BIN - 0.5, r0, r1), a = Math.floor(f), b = Math.min(r1, a + 1), t = f - a;
+      return sm[a] * (1 - t) + sm[b] * t;
+    };
+    const out = [];
+    let cursor = uStart;
+    const d = Math.max(size * 0.6, LABEL_BIN);
+    for (let i = 0; i < chars.length; i++) {
+      const uc = cursor + (adv[i] - LABEL_SPACING) * size / 2;
+      cursor += adv[i] * size;
+      const v = spine(uc);
+      const slope = clamp((spine(uc + d) - spine(uc - d)) / (2 * d), -0.6, 0.6);
+      const ang = theta + Math.atan(slope);
+      out.push({ ch: chars[i], x: mx + uc * ct - v * st, y: my + uc * st + v * ct, a: ang });
+    }
+    const mid0 = out[(out.length / 2) | 0];
+    return { chars: out, size, cx: mid0.x, cy: mid0.y, r: size * W1 / 2 + size };
+  }
+
+  function buildNationLabels() {
+    const byOwner = new Map();
+    for (const p of provinces) {
+      if (p.owner < 0) continue;
+      if (!byOwner.has(p.owner)) byOwner.set(p.owner, []);
+      byOwner.get(p.owner).push(p);
+    }
+    nationLabels = [];
+    for (const n of nations) {
+      if (!n || !n.alive) continue;
+      const list = byOwner.get(n.id);
+      if (!list) continue;
+      const l = buildNationLabel(n, list);
+      if (l) nationLabels.push(l);
+    }
+  }
+
   function drawNationLabels() {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const alpha = camera.zoom > 2.4 ? 0.4 : 0.86;
+    ctx.lineJoin = 'round';
+    const z = camera.zoom;
+    const alpha = z > 3.2 ? 0.45 : 0.82;
     for (const l of nationLabels) {
-      const size = clamp(l.size * 0.27 * camera.zoom, 0, 38);
-      if (size < 9) continue;
-      const sx = camera.x + l.x * camera.zoom;
-      const sy = camera.y + l.y * camera.zoom;
-      if (sx < -150 || sy < -60 || sx > W + 150 || sy > H + 60) continue;
-      ctx.font = `bold ${size}px Georgia, "Noto Serif KR", serif`;
-      if ('letterSpacing' in ctx) ctx.letterSpacing = `${(size * 0.14).toFixed(1)}px`;
+      const px = l.size * z;
+      if (px < 7) continue;
+      const sx = camera.x + l.cx * z, sy = camera.y + l.cy * z, rr = l.r * z;
+      if (sx < -rr || sy < -rr || sx > W + rr || sy > H + rr) continue;
+      ctx.font = `bold ${px}px ${LABEL_FONT}`;
       ctx.globalAlpha = alpha;
-      ctx.lineWidth = Math.max(2, size * 0.16);
-      ctx.strokeStyle = 'rgba(244,232,198,0.7)';
-      ctx.strokeText(l.name, sx, sy);
-      ctx.fillStyle = '#3a2716';
-      ctx.fillText(l.name, sx, sy);
+      ctx.lineWidth = Math.max(1.5, px * 0.14);
+      ctx.strokeStyle = 'rgba(244,232,198,0.55)';
+      ctx.fillStyle = '#2f1f10';
+      for (const c of l.chars) {
+        ctx.save();
+        ctx.translate(camera.x + c.x * z, camera.y + c.y * z);
+        ctx.rotate(c.a);
+        ctx.strokeText(c.ch, 0, 0);
+        ctx.fillText(c.ch, 0, 0);
+        ctx.restore();
+      }
     }
-    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
     ctx.restore();
   }
 
@@ -1555,6 +1954,40 @@
       const sy = camera.y + fx.y * camera.zoom;
       if (sx < -60 || sy < -60 || sx > W + 60 || sy > H + 60) continue;
       ctx.beginPath();
+      if (fx.kind === 'quake' || fx.kind === 'volcano') { // 지진·화산: 땅이 갈라지듯 번지는 고리
+        const k = clamp(fx.t / fx.d, 0, 1), z = camera.zoom;
+        const col = fx.kind === 'quake' ? '120,72,34' : '220,90,30';
+        for (let i = 0; i < 3; i++) {
+          const kk = clamp(1 - k - i * 0.14, 0, 1);
+          if (kk <= 0) continue;
+          ctx.beginPath();
+          ctx.strokeStyle = `rgba(${col},${(1 - kk) * 0.9})`;
+          ctx.lineWidth = Math.max(1.5, 3 * z);
+          const r = (4 + kk * 42) * z, jag = 2.2 * z;
+          for (let a = 0; a <= 24; a++) {
+            const ang = a / 24 * Math.PI * 2, rr = r + ((a % 2) ? jag : -jag) * (0.4 + kk);
+            const px = sx + Math.cos(ang) * rr, py = sy + Math.sin(ang) * rr;
+            a ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+          }
+          ctx.stroke();
+        }
+        if (fx.kind === 'volcano') { ctx.beginPath(); ctx.fillStyle = `rgba(230,100,30,${k * 0.45})`; ctx.arc(sx, sy, 10 * z, 0, Math.PI * 2); ctx.fill(); }
+        continue;
+      }
+      if (fx.kind === 'storm') { // 폭풍: 소용돌이치는 구름
+        const k = clamp(fx.t / fx.d, 0, 1), z = camera.zoom, spin = performance.now() / 380;
+        ctx.fillStyle = `rgba(90,110,140,${k * 0.22})`;
+        ctx.arc(sx, sy, 34 * z, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = Math.max(1.5, 2.6 * z);
+        ctx.strokeStyle = `rgba(235,242,250,${Math.min(1, k * 1.4) * 0.9})`;
+        for (let i = 0; i < 4; i++) {
+          ctx.beginPath();
+          ctx.arc(sx, sy, (8 + i * 7) * z, spin + i * 1.6, spin + i * 1.6 + 1.7);
+          ctx.stroke();
+        }
+        continue;
+      }
       if (fx.kind === 'rebel') { // 반란: 금빛 고리가 넓게 퍼진다
         const k = clamp(fx.t / 2.4, 0, 1);
         ctx.strokeStyle = `rgba(232,170,40,${k})`;
@@ -1701,12 +2134,14 @@
           <span id="nationName">${escapeHTML(getDisplayNationName(n))}</span>
         </div>
         <div class="small">${n.species} · ${n.ideology}${n.isRebel ? ' · 반란군' : ''} ${group ? `· ${group.name}` : ''}</div>
+        ${isSubject(n) ? `<div class="small" style="margin:3px 0">🏴 종주국: <b>${escapeHTML(nations[n.overlordId].name)}</b></div>` : ''}
+        ${coloniesOf(n.id).length ? `<div class="small" style="margin:3px 0">🏴 ${colonyWord()}: ${coloniesOf(n.id).map(c => escapeHTML(c.name)).join(', ')}</div>` : ''}
         <div class="small" style="margin:3px 0">🕊 ${escapeHTML(n.religion)} ${n.cities.some(c => c.holy) ? '· 성지 보유' : ''}</div>
         <div class="stat">인구 <b>${format(n.population)}</b></div>
         <div class="stat">영토 <b>${provinceCount(n.id)}</b></div>
         <div class="stat">군대 <b>●${dotCountOf(n.id)}</b></div>
         <div class="stat">골드 <b>${format(n.gold)}</b> ${n.tradeIncome > 0.5 ? `<span class="small">(무역 +${n.tradeIncome.toFixed(1)} / 비용 -${(n.tradeCost || 0).toFixed(1)})</span>` : ''}</div>
-        <div class="stat">기술력 <b>${n.tech.toFixed(1)}</b></div>
+        <div class="stat">기술력 <b>${n.tech.toFixed(1)}</b> <span class="small">· ${eraOf(n).name}</span></div>
         <div class="stat">안정도 <b>${n.stability.toFixed(0)}</b></div>
         <div class="stat">불안도 <b>${(n.unrest || 0).toFixed(0)}</b>${(n.unrest || 0) > 45 ? ' <span class="small">⚠ 반란 위험</span>' : ''}</div>
         <div class="stat">행복도 <b>${n.happiness.toFixed(0)}</b></div>
@@ -1850,10 +2285,19 @@
     if (getNationGroup(nations[aId]) && getNationGroup(nations[aId]) === getNationGroup(nations[bId])) return;
     const existing = wars.some(w => (w.a === aId && w.b === bId) || (w.b === aId && w.a === bId));
     if (existing) return;
+    if (subjectPair(nations[aId], nations[bId])) { // 종주국과 식민지의 전쟁 = 독립 전쟁
+      const c = nations[aId].overlordId === bId ? nations[aId] : nations[bId];
+      c.wasColonyOf = c.overlordId;
+      colonyRevolt(c);
+      updateUI();
+      return;
+    }
     wars.push({ a: aId, b: bId, age: 0, scoreA: 0, scoreB: 0, goal: '영토', active: true, lastChange: year });
     logEvent(`${nations[aId].name} ↔ ${nations[bId].name} 전쟁 발발!`, 'war');
     callAllies(aId, bId);
     callAllies(bId, aId);
+    callColonies(aId, bId);
+    callColonies(bId, aId);
     updateUI();
   }
 
@@ -1882,7 +2326,7 @@
       const atWar = warTouched.has(n.id);
 
       // 인구: 영토가 감당할 수 있는 수용량까지만 자란다 (넘치면 서서히 줄어듦)
-      const capacity = Math.max(60, provs * (35 + n.tech * 1.1));
+      const capacity = Math.max(60, provs * (35 + n.tech * 1.1) * eraOf(n).pop);
       let growth = 0.012 + n.tech * 0.00005;
       if (n.plague > 0) {
         growth -= 0.035;
@@ -1896,10 +2340,21 @@
       n.demographics.adults = clamp(1 - n.demographics.elders - n.demographics.children, 0.4, 0.7);
       const resources = computeNationResources(n);
       // 골드: 세금 수입 - (군 유지비 + 행정비 + 무역 비용). 저축은 매년 2%씩 가치가 줄어 무한정 쌓이지 않는다.
-      const income = provs * 3 + n.population * 0.02 + (n.tradeIncome || 0) + (resources[n.cities[0]?.resource] || 0) * 0.8;
+      const income = (provs * 3 + n.population * 0.02) * (0.8 + 0.2 * eraOf(n).gold) + (n.tradeIncome || 0) + (resources[n.cities[0]?.resource] || 0) * 0.8;
       const upkeep = n.army * 0.12 * (atWar ? 1.6 : 1) + provs * 1.5 + (n.tradeCost || 0);
       n.gold = Math.max(0, (n.gold + income - upkeep) * 0.98);
-      n.tech = clamp(n.tech + rand(0.01, 0.12) + n.gold * 0.00001, 1, 100);
+      // 기술: 발전이 느리고 꾸준하다. 높을수록 더뎌지고, 안정된 부유한 나라가 더 빠르다.
+      const techGain = (rand(0.004, 0.05) + Math.min(n.gold, 3000) * 0.000004) * rules.techSpeed
+        * (n.stability > 55 ? 1.15 : 0.8) * (1 - n.tech / 125) * (atWar ? 0.8 : 1);
+      n.tech = clamp(n.tech + techGain, 1, 100);
+      const ei = eraIndex(n.tech);
+      if (n.era == null) n.era = ei;
+      else if (ei > n.era) {
+        n.era = ei;
+        n.gold += 40 * ERAS[ei].gold;
+        n.stability = clamp(n.stability + 3, 0, 100);
+        if (!n.isRebel) logEvent(`${n.name}이(가) ${ERAS[ei].name}에 접어들었다.`, 'good');
+      } else if (ei < n.era) n.era = ei;
       n.happiness += rand(-0.6, 0.6) + (n.gold > n.population * 0.4 ? 0.3 : -0.3) + (n.stability > 60 ? 0.2 : -0.4);
       n.happiness = clamp(n.happiness, 0, 100);
       n.stability += rand(-0.7, 0.7) + (n.happiness - 50) * 0.01;
@@ -1907,7 +2362,7 @@
       if (n.warExhaustion > 20) n.stability -= 0.7;
       n.stability = clamp(n.stability, 0, 100);
       // 군대: 영토 수에 비례한 규모를 목표로 징집(골드 소모) / 초과분은 서서히 해산
-      const desiredArmy = desiredArmyFor(provs, atWar);
+      const desiredArmy = desiredArmyFor(provs, atWar, n);
       if (n.army < desiredArmy && n.gold > 20) {
         const add = Math.min(Math.max(2, (desiredArmy - n.army) * 0.2), n.gold * 2);
         n.army += add;
@@ -1915,7 +2370,7 @@
       } else if (n.army > desiredArmy * 1.25) {
         n.army -= (n.army - desiredArmy * 1.25) * 0.08;
       }
-      n.army = Math.max(1, Math.min(n.army, n.population * 0.45));
+      n.army = Math.max(1, Math.min(n.army, Math.max(n.population * 0.45, n.godArmy || 0)));
       n.power = n.army * (1 + n.tech / 100);
     }
 
@@ -1940,6 +2395,7 @@
       if (aBroken || bBroken) {
         const win = aBroken ? b : a, lose = aBroken ? a : b;
         endWar(w, `${win.name}이(가) ${lose.name}을(를) 거의 멸망시키고 전쟁에서 승리했다.`);
+        maybeColonize(win, lose, w.goal);
       } else if (year - (w.lastChange ?? year) > 35) {
         endWar(w, `${a.name}과(와) ${b.name}의 전쟁이 교착 끝에 휴전으로 끝났다.`);
       }
@@ -1951,6 +2407,7 @@
     simulateReligion();
     simulateMigration();
     simulateRebellion();
+    simulateColonies();
     randomEvents();
     autoColonization();
     if (needsClaimFix) {
@@ -2180,7 +2637,7 @@
     // 5) 전쟁 선포: 야심 있는 국가가 만만한 이웃을 노린다
     const avgPower = living.reduce((s, n) => s + n.power, 0) / Math.max(1, living.length);
     for (const a of living) {
-      if (a.isRebel) continue;
+      if (a.isRebel || isSubject(a)) continue;
       if (wars.filter(w => w.active && (w.a === a.id || w.b === a.id)).length >= 2) continue;
       let ambition = 0.012;
       if (a.ideology === '군주제' || a.ideology === '신권정') ambition += 0.008;
@@ -2191,7 +2648,7 @@
       let target = null, bestScore = 0;
       for (const bId of neighbors(a.id)) {
         const b = nations[bId];
-        if (!b?.alive || atWar(a.id, bId) || sameGroup(a, b) || truceActive(a, b)) continue;
+        if (!b?.alive || atWar(a.id, bId) || sameGroup(a, b) || truceActive(a, b) || subjectPair(a, b)) continue;
         if (sidePower(b) > sidePower(a) * 1.6) continue;
         let score = -relOf(a, b) + (a.power / Math.max(1, b.power) - 1) * 30;
         if (provinces.some(p => p.owner === a.id && p.adj.some(q => provinces[q].owner === bId))) score += 15;
@@ -2228,6 +2685,89 @@
     }
   }
 
+  // ===== 식민지 =====
+  // 식민지(종속국)는 자기 땅과 정부를 유지하지만 종주국에 조공을 바치고, 종주국의 전쟁에 끌려가며, 불만이 쌓이면 독립 전쟁을 일으킨다.
+  // 내부 반란은 식민지가 있는 나라에서는 식민지 독립 운동으로 나타난다.
+  function colonyWord() {
+    const sc = currentMap.scenarioId && window.WFScenarios ? WFScenarios.get(currentMap.scenarioId) : null;
+    return (sc && sc.colonyWord) || '식민지';
+  }
+  function isSubject(n) { return !!n && n.overlordId != null && !!nations[n.overlordId]?.alive; }
+  function subjectPair(a, b) { return !!a && !!b && (a.overlordId === b.id || b.overlordId === a.id); }
+  function coloniesOf(id) { return nations.filter(n => n.alive && n.overlordId === id); }
+
+  function makeColony(colony, overlord, text) {
+    for (const w of wars) {
+      if (w.active && ((w.a === colony.id && w.b === overlord.id) || (w.b === colony.id && w.a === overlord.id))) w.active = false;
+    }
+    wars = wars.filter(w => w.active);
+    const g = getNationGroup(colony);
+    if (g) leaveAlliance(g, colony.id);
+    colony.overlordId = overlord.id;
+    colony.isColony = true;
+    colony.colonySince = year;
+    colony.unrest = Math.min(colony.unrest || 0, 20);
+    setTruce(colony, overlord, 15);
+    if (text) logEvent(text, 'war');
+  }
+
+  function freeColony(colony) {
+    colony.overlordId = null;
+    colony.isColony = false;
+    colony.colonySince = undefined;
+  }
+
+  // 독립 전쟁: 식민지가 종주국에서 떨어져 나가며 전쟁을 벌인다
+  function colonyRevolt(colony) {
+    const ov = nations[colony.overlordId];
+    freeColony(colony);
+    colony.stability = clamp(colony.stability + 10, 0, 100);
+    colony.unrest = (colony.unrest || 0) * 0.4;
+    if (!ov?.alive) { logEvent(`${colony.name}이(가) 독립을 선언했다.`, 'good'); return; }
+    ov.stability = clamp(ov.stability - 5, 0, 100);
+    colony.relations[ov.id] = -60;
+    ov.relations[colony.id] = -60;
+    if (!findWar(ov.id, colony.id)) wars.push({ a: ov.id, b: colony.id, age: 0, scoreA: 0, scoreB: 0, goal: '독립', active: true, lastChange: year });
+    logEvent(`${colony.name}이(가) ${ov.name}에 맞서 독립 전쟁을 일으켰다!`, 'war');
+    deathFx.push({ x: colony.capital.x + 0.5, y: colony.capital.y + 0.5, t: 2.4, kind: 'rebel' });
+    callAllies(colony.id, ov.id);
+  }
+
+  // 종주국이 전쟁을 하면 식민지가 따라 참전한다
+  function callColonies(ovId, enemyId) {
+    for (const c of coloniesOf(ovId)) {
+      if (c.id === enemyId || findWar(c.id, enemyId) || subjectPair(c, nations[enemyId])) continue;
+      if (rand() < 0.7) {
+        wars.push({ a: c.id, b: enemyId, age: 0, scoreA: 0, scoreB: 0, goal: '종주국 참전', active: true, lastChange: year });
+        logEvent(`${c.name}이(가) 종주국 ${nations[ovId].name}을(를) 따라 참전했다.`, 'war');
+      }
+    }
+  }
+
+  // 종전 때 압도적으로 앞선 쪽은 패전국을 식민지로 삼을 수 있다
+  function maybeColonize(win, lose, goal) {
+    if (!rules.colonies || !win.alive || !lose.alive || isSubject(win) || isSubject(lose) || lose.isRebel) return;
+    const reconquest = goal === '독립' && lose.wasColonyOf === win.id;
+    if (!reconquest && !((win.tech >= lose.tech * 1.1 || win.power >= lose.power * 1.5) && rand() < 0.8)) return;
+    lose.wasColonyOf = undefined;
+    makeColony(lose, win, reconquest
+      ? `${lose.name}의 독립 전쟁이 실패해 다시 ${win.name}의 ${colonyWord()}가 되었다.`
+      : `${lose.name}이(가) ${win.name}의 ${colonyWord()}가 되었다.`);
+  }
+
+  function simulateColonies() {
+    for (const n of nations) {
+      if (!n.alive || n.overlordId == null) continue;
+      const ov = nations[n.overlordId];
+      if (!ov?.alive) { freeColony(n); logEvent(`종주국이 사라져 ${n.name}이(가) 독립했다.`, 'good'); continue; }
+      const tribute = Math.min(n.gold * 0.05, 30);
+      n.gold -= tribute; ov.gold += tribute;
+      if (year - (n.colonySince ?? year) < 15) continue;
+      const weak = ov.power < n.power * 0.8 ? 0.02 : 0;
+      if ((n.unrest || 0) > 40 && rand() < ((n.unrest || 0) - 40) / 400 + weak) { n.wasColonyOf = ov.id; colonyRevolt(n); }
+    }
+  }
+
   function endWar(w, text) {
     w.active = false;
     const a = nations[w.a], b = nations[w.b];
@@ -2236,23 +2776,169 @@
   }
 
 
+  // ===== 사건 · 자연재해 =====
+  function pickNation(filter) {
+    const list = nations.filter(n => n.alive && (!filter || filter(n)));
+    return list.length ? list[irand(0, list.length - 1)] : null;
+  }
+
+  function randomProvinceOf(n, coastal) {
+    const mine = provinces.filter(p => p.owner === n.id);
+    if (!mine.length) return null;
+    if (coastal) {
+      const shore = mine.filter(p => isCoastalCell(Math.floor(p.cx), Math.floor(p.cy)));
+      if (shore.length) return shore[irand(0, shore.length - 1)];
+    }
+    return mine[irand(0, mine.length - 1)];
+  }
+
+  // 반경 r 안의 도시를 확률적으로 한 단계 낮춘다
+  function damageCities(n, x, y, r, chance) {
+    let hit = 0;
+    for (const c of n.cities) {
+      if (Math.hypot(c.x - x, c.y - y) > r || rand() > chance) continue;
+      if ((c.level || 1) > 1) { c.level--; hit++; }
+    }
+    return hit;
+  }
+
+  // 반경 r 안의 군대 점 몇 개를 잃는다
+  function killDotsNear(x, y, r, max) {
+    let k = 0;
+    for (const u of armyUnits) {
+      if (k >= max) break;
+      if (!u.dead && Math.hypot(u.x - x, u.y - y) < r) { killDot(u); k++; }
+    }
+  }
+
+  function disaster(kind, n) {
+    if (!n || !n.alive) return;
+    const p = randomProvinceOf(n, kind === 'storm');
+    if (!p) return;
+    const x = p.cx, y = p.cy;
+    const hurt = (popLoss, goldLoss, stab) => {
+      n.population = Math.max(1, Math.floor(n.population * (1 - popLoss)));
+      n.gold = Math.max(0, n.gold - goldLoss);
+      n.stability = clamp(n.stability - stab, 0, 100);
+      n.unrest = (n.unrest || 0) + stab * 0.5;
+    };
+    if (kind === 'quake') {
+      hurt(rand(0.03, 0.12), irand(30, 120), irand(3, 9));
+      damageCities(n, x, y, 45, 0.6);
+      killDotsNear(x, y, 40, 2);
+      deathFx.push({ x, y, t: 4.5, d: 4.5, kind: 'quake' });
+      logEvent(`${n.name}에 규모 ${rand(6, 8.8).toFixed(1)}의 지진이 발생했다. 도시가 무너지고 많은 사람이 숨졌다.`, 'bad');
+    } else if (kind === 'storm') {
+      hurt(rand(0.01, 0.05), irand(20, 90), irand(2, 6));
+      n.army = Math.max(1, n.army * 0.96);
+      damageCities(n, x, y, 40, 0.25);
+      killDotsNear(x, y, 60, 3);
+      deathFx.push({ x, y, t: 5, d: 5, kind: 'storm' });
+      logEvent(`${n.name}에 거대한 폭풍이 몰아쳤다. 농작물과 항구가 큰 피해를 입었다.`, 'bad');
+    } else if (kind === 'flood') {
+      hurt(rand(0.02, 0.07), irand(25, 90), irand(2, 7));
+      deathFx.push({ x, y, t: 4, d: 4, kind: 'storm' });
+      logEvent(`${n.name}에 대홍수가 나 농경지가 물에 잠겼다.`, 'bad');
+    } else if (kind === 'drought') {
+      hurt(rand(0.03, 0.09), irand(20, 70), irand(3, 8));
+      n.happiness = clamp(n.happiness - 6, 0, 100);
+      logEvent(`${n.name}에 오랜 가뭄이 이어져 식량난이 닥쳤다.`, 'bad');
+    } else if (kind === 'volcano') {
+      hurt(rand(0.03, 0.1), irand(30, 100), irand(4, 10));
+      damageCities(n, x, y, 35, 0.5);
+      killDotsNear(x, y, 30, 2);
+      deathFx.push({ x, y, t: 5, d: 5, kind: 'volcano' });
+      logEvent(`${n.name}의 화산이 폭발해 잿빛 재가 하늘을 덮었다.`, 'bad');
+    }
+    territoryDirty = true;
+  }
+
+  function coup(n) {
+    if (!n || !n.alive || n.isRebel) return;
+    const old = n.ideology;
+    const options = IDEOLOGIES.filter(i => i !== old);
+    n.ideology = options[irand(0, options.length - 1)];
+    n.stability = clamp(n.stability - irand(10, 25), 0, 100);
+    n.happiness = clamp(n.happiness - 6, 0, 100);
+    n.army = Math.max(1, n.army * 0.93);
+    n.unrest = (n.unrest || 0) + 6;
+    logEvent(`${n.name}에서 쿠데타가 일어나 정권이 바뀌었다. (${old} → ${n.ideology})`, 'war');
+    const cap = n.cities.find(c => c.capital);
+    if (cap) deathFx.push({ x: cap.x + 0.5, y: cap.y + 0.5, t: 2.4, kind: 'rebel' });
+    if (rand() < 0.25 && !isSubject(n) && canSpawnRebels()) spawnRebellion(n);
+  }
+
   function randomEvents() {
-    if (rand() < 0.012) {
-      const alive = nations.filter(n => n.alive);
-      if (!alive.length) return;
-      const n = alive[irand(0, alive.length - 1)];
+    const roll = p => rand() < p * rules.eventRate;
+    let n;
+    if (roll(0.012) && (n = pickNation())) {
       n.population = Math.max(1, Math.floor(n.population * 0.92));
       n.gold = Math.max(0, n.gold - irand(20, 80));
-      n.stability -= irand(3, 12);
+      n.stability = clamp(n.stability - irand(3, 12), 0, 100);
       logEvent(`${n.name}에 흉년이 발생했다. 인구와 경제가 감소했다.`, 'bad');
     }
-    if (rand() < 0.008) {
-      const alive = nations.filter(n => n.alive);
-      if (!alive.length) return;
-      const n = alive[irand(0, alive.length - 1)];
-      n.tech += rand(2, 6);
+    if (roll(0.008) && (n = pickNation())) {
+      n.tech = clamp(n.tech + rand(0.4, 1.6) * rules.techSpeed, 1, 100);
       n.gold += irand(30, 100);
       logEvent(`${n.name}에서 새로운 기술이 발견됐다.`, 'good');
+    }
+    if (rules.disasters) {
+      if (roll(0.014)) disaster('quake', pickNation());
+      if (roll(0.016)) disaster('storm', pickNation());
+      if (roll(0.008)) disaster('flood', pickNation());
+      if (roll(0.008)) disaster('drought', pickNation());
+      if (roll(0.003)) disaster('volcano', pickNation());
+    }
+    if (roll(0.012) && (n = pickNation(x => !x.isRebel && (x.stability < 45 || rand() < 0.08)))) coup(n);
+    if (roll(0.009) && (n = pickNation(x => x.happiness > 50))) {
+      n.population = Math.floor(n.population * (1 + rand(0.08, 0.2)));
+      logEvent(`${n.name}에 베이비붐이 일어나 인구가 폭발적으로 늘었다.`, 'good');
+    }
+    if (roll(0.009) && (n = pickNation(x => x.population > 150))) {
+      n.population = Math.max(1, Math.floor(n.population * (1 - rand(0.1, 0.25))));
+      n.happiness = clamp(n.happiness - 8, 0, 100);
+      logEvent(`${n.name}에서 대기근과 이민으로 인구가 급격히 줄었다.`, 'bad');
+    }
+    if (roll(0.007) && (n = pickNation())) {
+      n.gold += irand(80, 250) * eraOf(n).gold;
+      n.happiness = clamp(n.happiness + 5, 0, 100);
+      logEvent(`${n.name}에 경제 호황이 찾아왔다.`, 'good');
+    }
+    if (roll(0.007) && (n = pickNation(x => x.gold > 80))) {
+      n.gold *= 0.55;
+      n.stability = clamp(n.stability - irand(3, 9), 0, 100);
+      logEvent(`${n.name}에 심각한 경제 위기가 닥쳤다.`, 'bad');
+    }
+    if (roll(0.005) && (n = pickNation(x => x.stability > 55))) {
+      n.happiness = clamp(n.happiness + 15, 0, 100);
+      n.stability = clamp(n.stability + 10, 0, 100);
+      n.tech = clamp(n.tech + 0.5 * rules.techSpeed, 1, 100);
+      logEvent(`${n.name}에 문화가 꽃피는 황금기가 열렸다.`, 'good');
+    }
+    if (roll(0.005) && (n = pickNation(x => !x.isRebel))) {
+      n.stability = clamp(n.stability - irand(10, 20), 0, 100);
+      n.unrest = (n.unrest || 0) + 8;
+      logEvent(`${n.name}의 지도자가 암살당해 정국이 혼란에 빠졌다.`, 'war');
+    }
+    if (roll(0.005) && (n = pickNation())) {
+      n.plague = Math.max(n.plague || 0, 10);
+      n.population = Math.max(1, Math.floor(n.population * 0.9));
+      logEvent(`${n.name}에 전염병이 번지기 시작했다.`, 'bad');
+    }
+    if (roll(0.005) && (n = pickNation())) {
+      n.happiness = clamp(n.happiness + 8, 0, 100);
+      n.stability = clamp(n.stability + 5, 0, 100);
+      logEvent(`${n.name}에서 종교 부흥 운동이 일어났다.`, 'good');
+    }
+    if (roll(0.004) && (n = pickNation())) {
+      const cap = n.cities.find(c => c.capital);
+      if (cap && (cap.level || 1) > 1) cap.level--;
+      n.gold = Math.max(0, n.gold - irand(30, 90));
+      logEvent(`${n.name}의 수도에 대화재가 일어났다.`, 'bad');
+    }
+    if (roll(0.0015)) {
+      for (const x of nations) if (x.alive) x.population = Math.max(1, Math.floor(x.population * (1 - rand(0.03, 0.08))));
+      logEvent('세계적인 대유행병이 퍼져 모든 나라의 인구가 줄었다.', 'bad');
     }
   }
 
@@ -2295,7 +2981,7 @@
           const old = b.religion;
           b.religion = a.religion;
           b.stability -= 6;
-          logEvent(`${b.name}에서 ${old} 신자들이 ${a.religion}(으)로 개종하기 시작했다.`, 'god');
+          if (rand() < 0.3) logEvent(`${b.name}에서 ${old} 신자들이 ${a.religion}(으)로 개종하기 시작했다.`, 'god'); // 기록이 도배되지 않게 일부만
         }
       }
     }
@@ -2321,12 +3007,45 @@
   }
 
   // 식민지화는 구역 단위 점령 체계와 맞지 않아 제거했다 (예전엔 남의 구역에 낱칸만 찍던 방식).
-  function autoColonization() {}
+  // 기술·국력이 크게 앞선 나라가 이웃의 약한 나라를 식민지로 삼는다 (설정에서 끌 수 있다)
+  function autoColonization() {
+    if (!rules.colonies || rand() > 0.12) return;
+    const strong = nations.filter(n => n.alive && !n.isRebel && !isSubject(n) && n.tech >= 35 && provinceCount(n.id) >= 2);
+    if (!strong.length) return;
+    const a = strong[irand(0, strong.length - 1)];
+    const targets = neighbors(a.id).map(id => nations[id]).filter(c => c && c.alive && !isSubject(c) && !c.isRebel &&
+      !subjectPair(a, c) && !sameGroup(a, c) && !findWar(a.id, c.id) && !truceActive(a, c) &&
+      a.tech >= c.tech * 1.3 && a.power >= c.power * 1.3);
+    if (!targets.length) return;
+    const c = targets[irand(0, targets.length - 1)];
+    makeColony(c, a, `${a.name}이(가) ${c.name}을(를) ${colonyWord()}로 삼았다.`);
+  }
 
   // ===== 반란 =====
   // 불만(unrest)은 안정도·행복도·전쟁·제국 규모·정복지 비율에서 쌓인다.
   // 1) 불만이 높은 나라는 영토 일부가 반란 국가로 떨어져 나가고, 2) 정복당한 구역은 해방/독립을 노린다.
-  function createRebelNation(parent, grabbed, name, goal) {
+  // 시나리오별 반란 정체성: 정치 이념(2차대전 등) 또는 역사적 국가 이름(삼국시대)
+  function rebelIdentity(parent, liberatedFrom) {
+    const sc = currentMap.scenarioId && window.WFScenarios ? WFScenarios.get(currentMap.scenarioId) : null;
+    const cfg = sc && sc.rebels;
+    if (!cfg) return null;
+    const root = x => x.baseName || x.name; // 반란이 반란을 낳아도 이름이 길어지지 않게 원래 나라 이름을 쓴다
+    const used = new Set(nations.filter(n => n.alive).map(n => n.name));
+    const uniq = base => { let nm = base, k = 2; while (used.has(nm)) nm = `${base} ${k++}세`; return nm; };
+    if (cfg.mode === 'names') {
+      if (liberatedFrom) return { name: uniq(`${root(liberatedFrom)} ${cfg.liberation || '해방군'}`), final: uniq(`신 ${root(liberatedFrom)}`), ideology: '부족연맹', base: root(liberatedFrom) };
+      const pool = (cfg.byParent && cfg.byParent[parent.name]) || cfg.default;
+      const free = pool.filter(x => !used.has(x));
+      const pick = (free.length ? free : pool)[irand(0, (free.length ? free : pool).length - 1)];
+      return { name: uniq(pick), final: uniq(pick), ideology: parent.ideology === '군주제' ? '군주제' : '부족연맹', base: pick };
+    }
+    const types = cfg.types.map(t => WFScenarios.ideo[t]).filter(t => t && t.ideology !== parent.ideology);
+    const t = types[irand(0, types.length - 1)];
+    const base = root(liberatedFrom || parent);
+    return { name: uniq(`${base} ${t.rebel}`), final: uniq(`${base} ${t.final}`), ideology: t.ideology, base };
+  }
+
+  function createRebelNation(parent, grabbed, name, goal, ident) {
     const total = Math.max(1, provinceCount(parent.id));
     const share = grabbed.length / total;
     const start = grabbed[0];
@@ -2341,7 +3060,7 @@
     parent.lowStabYears = 0;
 
     const rebel = {
-      id, name, color: pickNationColor(), species: parent.species, ideology: '부족연맹',
+      id, name: ident ? ident.name : name, color: pickNationColor(), species: parent.species, ideology: ident ? ident.ideology : '부족연맹', finalName: ident ? ident.final : null, baseName: ident ? ident.base : undefined,
       seedX: sx, seedY: sy, population: popShare, army: armyShare, gold: Math.floor(parent.gold * 0.15),
       tech: parent.tech * 0.7, stability: rand(45, 65), power: 0, age: 0, alive: true, cities: [], capital: { x: sx, y: sy }, relations: {},
       plague: 0, warExhaustion: 0, allianceId: null, unionId: null, religion: parent.religion, happiness: rand(45, 65),
@@ -2383,6 +3102,17 @@
   }
 
   function spawnRebellion(n) {
+    // 식민지를 거느린 나라의 불만은 식민지 독립 운동으로 터진다
+    const subs = coloniesOf(n.id);
+    if (subs.length) {
+      if (year - (n.lastRebellion ?? -999) < 15) return;
+      n.lastRebellion = year;
+      const c = subs.sort((a, b) => (b.unrest || 0) - (a.unrest || 0))[0];
+      c.wasColonyOf = n.id;
+      n.unrest = (n.unrest || 0) * 0.6;
+      colonyRevolt(c);
+      return;
+    }
     if (!canSpawnRebels() || year - (n.lastRebellion ?? -999) < 40) return;
     const mine = provinces.filter(p => p.owner === n.id && !p.capture);
     if (mine.length < 3) return;
@@ -2402,12 +3132,13 @@
         if (!seenProv.has(q) && qp.owner === n.id && !qp.capture && !isCapitalProvince(qp)) { seenProv.add(q); queue.push(qp); }
       }
     }
-    const rebel = createRebelNation(n, grabbed, `${n.name} 반란군`, '독립');
+    const rebel = createRebelNation(n, grabbed, `${n.name} 반란군`, '독립', rebelIdentity(n, null));
     logEvent(`${n.name}의 불만이 폭발해 ${rebel.name}이(가) 봉기했다!`, 'war');
   }
 
   // 점령지 봉기: 원래 주인에게 돌아가거나(해방), 독립 국가를 세운다
-  function spawnProvinceRevolt(p, n) {    const orig = nations[p.origOwner];
+  function spawnProvinceRevolt(p, n) {
+    const orig = nations[p.origOwner];
     const group = [p];
     for (const q of p.adj) {
       const qp = provinces[q];
@@ -2427,7 +3158,7 @@
       return;
     }
     if (!canSpawnRebels()) return;
-    const rebel = createRebelNation(n, group, orig ? `${orig.name} 해방군` : `${n.name} 반란군`, '독립');
+    const rebel = createRebelNation(n, group, orig ? `${orig.name} 해방군` : `${n.name} 반란군`, '독립', rebelIdentity(n, orig || null));
     logEvent(`${n.name}의 점령지에서 ${rebel.name}이(가) 봉기했다!`, 'war');
   }
 
@@ -2452,7 +3183,7 @@
         if (n.age >= 25) {
           const old = n.name;
           n.isRebel = false;
-          n.name = pickNationName();
+          n.name = n.finalName || pickNationName();
           for (const c of n.cities) if (c.capital) c.name = `${n.name} 수도`;
           logEvent(`${old}이(가) 독립 국가 ${n.name}(으)로 인정받았다.`, 'good');
         }
@@ -2462,7 +3193,7 @@
       const conquered = mine.filter(p => p.origOwner >= 0 && p.origOwner !== n.id && year - p.conqueredYear < 60);
       const target = clamp(
         (60 - n.stability) * 0.9 + (50 - n.happiness) * 0.5 + (warCount.get(n.id) || 0) * 4 +
-        Math.max(0, mine.length - 6) * 3 + (conquered.length / Math.max(1, mine.length)) * 30, 0, 100);
+        Math.max(0, mine.length - 6) * 3 + (conquered.length / Math.max(1, mine.length)) * 30 + (isSubject(n) ? 35 + Math.min(25, (year - (n.colonySince ?? year)) * 0.5) : 0), 0, 100);
       n.unrest = (n.unrest || 0) + (target - (n.unrest || 0)) * 0.1;
       n.lowStabYears = n.stability < 22 ? (n.lowStabYears || 0) + 1 : 0;
 
@@ -2680,7 +3411,7 @@
         const en = nations[enemy.owner];
         n.gold = Math.max(0, n.gold - BATTLE_GOLD_PER_SEC * dt); // 싸우는 동안 매 순간 군수 비용
         // 골드가 바닥난 나라는 보급이 끊겨 전투력이 떨어진다
-        const mult = (1 + n.tech / 200) / (1 + (en ? en.tech : 0) / 200) * (n.gold < 1 ? 0.6 : 1);
+        const mult = (1 + n.tech / 70) / (1 + (en ? en.tech : 0) / 70) * (n.gold < 1 ? 0.6 : 1);
         if (!enemy.dead && Math.random() < 1 - Math.exp(-KILL_RATE * mult * dt)) killDot(enemy);
       } else if (gp && u.prov === u.goal) {
         // 목표 구역에 도착: 구역 안을 뽈뽈거리며 돌아다닌다
@@ -2889,7 +3620,7 @@
     if (w) { w.lastChange = year; addWarScore(w, cap.to, 4); }
     const loser = nations[cap.from], winner = nations[cap.to];
     // 점령한 영토만큼 군대가 늘어난다 (징집령). 영토를 잃은 쪽은 병력이 조금 줄어든다.
-    if (winner) winner.army = Math.max(winner.army, Math.min(winner.army + ARMY_PER_PROVINCE * 0.6, desiredArmyFor(provinceCount(cap.to), true) * 1.3));
+    if (winner) winner.army = Math.max(winner.army, Math.min(winner.army + ARMY_PER_PROVINCE * 0.6, desiredArmyFor(provinceCount(cap.to), true, nations[cap.to]) * 1.3));
     if (loser) loser.army = Math.max(1, loser.army - ARMY_PER_PROVINCE * 0.3);
     if (loser && winner && loser.capital && provOf[idx(clamp(Math.floor(loser.capital.x), 0, MAP_W - 1), clamp(Math.floor(loser.capital.y), 0, MAP_H - 1))] === p.id) {
       logEvent(`${winner.name}이(가) ${loser.name}의 수도 구역을 점령했다!`, 'war');
@@ -3028,11 +3759,11 @@
   function bless(type, n) {
     if (!n) return;
     if (type === 'pop') n.population = Math.floor(n.population * 1.1);
-    if (type === 'army') n.army = Math.floor(n.army * 1.1);
+    if (type === 'army') { n.army = Math.floor(n.army * 1.1); n.godArmy = Math.max(n.godArmy || 0, n.army); }
     if (type === 'gold') n.gold = Math.floor(n.gold * 1.2);
     if (type === 'tech') n.tech = clamp(n.tech + 10, 1, 100);
     if (type === 'cursePop') n.population = Math.max(1, Math.floor(n.population * 0.9));
-    if (type === 'curseArmy') n.army = Math.max(1, Math.floor(n.army * 0.9));
+    if (type === 'curseArmy') { n.army = Math.max(1, Math.floor(n.army * 0.9)); if (n.godArmy) n.godArmy = Math.floor(n.godArmy * 0.9); }
     if (type === 'curseGold') n.gold = Math.floor(n.gold * 0.8);
     if (type === 'curseTech') n.tech = Math.max(1, n.tech - 10);
     logEvent(`${n.name}에게 신의 힘이 내려졌다.`, 'god');
@@ -3114,6 +3845,7 @@
       lowStabYears: 0,
       isRebel: false
     };
+    nation.godArmy = nation.army; // 신이 만든 국가의 군대는 작은 영토에서도 해산되지 않는다
     nations.push(nation);
     // 새 국가는 그 자리의 구역 하나를 차지한다 (전쟁 중에 점령되고 있는 구역은 제외)
     const startProv = provinces[provOf[idx(x, y)]];
@@ -3345,6 +4077,8 @@
   document.getElementById('goldDown').onclick = () => { if (selected >= 0) { bless('curseGold', nations[selected]); updateUI(); } };
   document.getElementById('techUp').onclick = () => { if (selected >= 0) { bless('tech', nations[selected]); updateUI(); } };
   document.getElementById('techDown').onclick = () => { if (selected >= 0) { bless('curseTech', nations[selected]); updateUI(); } };
+  document.getElementById('quake').onclick = () => { if (selected >= 0) { disaster('quake', nations[selected]); updateUI(); } };
+  document.getElementById('storm').onclick = () => { if (selected >= 0) { disaster('storm', nations[selected]); updateUI(); } };
   document.getElementById('plague').onclick = () => { if (selected >= 0) { plagueNation(nations[selected]); updateUI(); } };
   document.getElementById('forceWar').onclick = () => { if (selected >= 0) forceWar(); };
   document.getElementById('forcePeace').onclick = () => { if (selected >= 0) forcePeace(); };
@@ -3476,15 +4210,39 @@
     thumbnail: thumbnailURL,
     setPaused,
     isPaused: () => paused,
-    isStarted: () => gameStarted
+    isStarted: () => gameStarted,
+    // 디버그용: 살아 있는 국가의 요약 (군대 점 수, 구역 수 등)
+    nationStats: () => nations.filter(n => n.alive).map(n => ({ name: n.name, army: Math.round(n.army), dots: dotCountOf(n.id), provs: provinceCount(n.id), tech: +n.tech.toFixed(1), pw: n.pw, pop: Math.round(n.population) }))
   };
 
   ui.relationTarget.onchange = () => { targetId = Number(ui.relationTarget.value); };
   document.getElementById('makeAlliance').onclick = () => { if (selected >= 0 && targetId >= 0) createAllianceBetween(selected, targetId); };
   document.getElementById('breakAlliance').onclick = () => { if (selected >= 0) destroyAllianceForSelected(); };
   document.getElementById('startWar').onclick = () => { startWarButton(); };
+  document.getElementById('colonize').onclick = () => {
+    if (selected < 0 || targetId < 0) return;
+    const ov = nations[selected], c = nations[targetId];
+    if (!ov?.alive || !c?.alive) return;
+    if (!rules.colonies) { logEvent('설정에서 식민지 시스템이 꺼져 있다.', 'bad'); return; }
+    if (isSubject(c) || isSubject(ov)) { logEvent('이미 종속 관계에 있는 나라는 식민지로 삼을 수 없다.', 'bad'); return; }
+    if (findWar(ov.id, c.id) || !(ov.power >= c.power * 1.2 || ov.tech >= c.tech * 1.2)) {
+      logEvent(`${ov.name}은(는) ${c.name}을(를) ${colonyWord()}로 삼기에는 국력·기술 격차가 부족하다.`, 'bad');
+      return;
+    }
+    makeColony(c, ov, `${ov.name}이(가) ${c.name}을(를) ${colonyWord()}로 삼았다.`);
+    updateUI();
+  };
+  document.getElementById('releaseColony').onclick = () => {
+    if (selected < 0 || targetId < 0) return;
+    const c = nations[targetId];
+    if (!c?.alive || c.overlordId !== selected) { logEvent('선택한 나라의 식민지가 아니다.', 'bad'); return; }
+    freeColony(c);
+    logEvent(`${nations[selected].name}이(가) ${c.name}을(를) 독립시켜 주었다.`, 'good');
+    updateUI();
+  };
   document.getElementById('makePeace').onclick = () => { if (selected >= 0 && targetId >= 0) makePeace(selected, targetId); };
 
+  window.addEventListener('wf-lang', () => { advCache.clear(); buildNationLabels(); updateUI(); });
   canvas.width = W;
   canvas.height = H;
   resetWorld();
