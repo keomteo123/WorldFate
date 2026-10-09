@@ -9,7 +9,7 @@
     address: ''
   };
   const VERSION = '2026-10-09';
-  const MIN_AGE = 7;
+  const MIN_AGE = 14;
 
   // ---------- 한국어 ----------
   const KO = `
