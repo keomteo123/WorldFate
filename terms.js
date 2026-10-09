@@ -121,6 +121,7 @@
 <ul>
 <li><b>현대 지도·국경 (현실 지도)</b>: <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a> 1:50m 데이터 (퍼블릭 도메인). <a href="https://github.com/topojson/world-atlas" target="_blank" rel="noopener">world-atlas</a> TopoJSON(ISC 라이선스)을 통해 사용했습니다.</li>
 <li><b>역사 시나리오 국경</b>: <a href="https://github.com/aourednik/historical-basemaps" target="_blank" rel="noopener">Historical Basemaps</a> (aourednik), <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. 게임에 맞게 단순화·가공했습니다.</li>
+<li><b>배경음악</b>: Google Gemini의 음악 생성 기능으로 만든 AI 생성 음악입니다. 서비스에 추가되는 음악도 같은 방식으로 만들 수 있습니다.</li>
 </ul>
 <p>위 데이터가 보여 주는 국경과 지명은 게임 표현을 위한 것이며 특정 국가의 공식 입장을 나타내지 않습니다.</p>
 `;
@@ -204,6 +205,7 @@
 <ul>
 <li><b>Modern map and borders (real-world map)</b>: <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a> 1:50m data (public domain), used via <a href="https://github.com/topojson/world-atlas" target="_blank" rel="noopener">world-atlas</a> TopoJSON (ISC license).</li>
 <li><b>Historical scenario borders</b>: <a href="https://github.com/aourednik/historical-basemaps" target="_blank" rel="noopener">Historical Basemaps</a> by aourednik, licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Simplified and modified for this game.</li>
+<li><b>Background music</b>: AI-generated music created with Google Gemini's music generation. Music added to the Service later may be created the same way.</li>
 </ul>
 <p>Borders and place names shown are for gameplay and do not express any official position of any state.</p>
 `;
