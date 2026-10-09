@@ -4,12 +4,12 @@
   const $ = id => document.getElementById(id);
 
   const OPERATOR = {
-    name: '[운영자 이름 또는 상호]',
-    email: '[문의 이메일]',
-    address: '[주소 / 소재지]'
+    name: 'WorldFate 운영팀',
+    email: 'keomteo123@gmail.com',
+    address: ''
   };
   const VERSION = '2026-10-09';
-  const MIN_AGE = 16;
+  const MIN_AGE = 7;
 
   // ---------- 한국어 ----------
   const KO = `
@@ -66,7 +66,7 @@
 <p>이 약관은 대한민국 법률에 따라 해석됩니다. 다만 이용자가 거주 국가의 강행 소비자 보호 법령상 권리를 가지는 경우, 이 조항은 그 권리를 제한하지 않습니다. 서비스와 관련한 분쟁은 우선 당사자 간 성실한 협의로 해결하며, 해결되지 않을 경우 민사소송법상 관할 법원에 제기합니다.</p>
 
 <h5>제12조 (문의)</h5>
-<p>운영자: ${OPERATOR.name} · 이메일: ${OPERATOR.email} · 소재지: ${OPERATOR.address}</p>
+<p>운영자: ${OPERATOR.name} · 이메일: ${OPERATOR.email}</p>
 
 <h4>제2부 개인정보 처리방침</h4>
 <p>운영자는 「개인정보 보호법」(대한민국), EU 일반개인정보보호법(GDPR), 미국 캘리포니아 소비자 프라이버시법(CCPA/CPRA) 등 이용자가 속한 지역의 개인정보 보호 법령을 준수하며, 이용자의 개인정보를 필요한 최소한으로만 처리합니다.</p>
@@ -154,7 +154,7 @@
 <p>These Terms are governed by the laws of the Republic of Korea, without depriving you of the mandatory consumer-protection rights of the country where you live. We aim to resolve disputes through good-faith discussion first.</p>
 
 <h5>11. Contact</h5>
-<p>${OPERATOR.name} · ${OPERATOR.email} · ${OPERATOR.address}</p>
+<p>${OPERATOR.name} · ${OPERATOR.email}</p>
 
 <h4>Part 2 · Privacy Policy</h4>
 <p>We process personal data in line with applicable privacy law, including Korea's Personal Information Protection Act, the EU/UK GDPR and the California CCPA/CPRA, and we collect only what we need. The Operator is the data controller.</p>
