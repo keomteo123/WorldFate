@@ -25,8 +25,8 @@
 ③ 이용자가 변경 약관의 시행일까지 거부 의사를 밝히지 않고 서비스를 계속 이용하면 동의한 것으로 봅니다. 동의하지 않으면 탈퇴할 수 있습니다.</p>
 
 <h5>제3조 (이용 자격)</h5>
-<p>① 서비스는 만 ${MIN_AGE}세 이상만 계정을 만들 수 있습니다. 만 ${MIN_AGE}세 미만은 가입할 수 없습니다.<br>
-② 계정 없이도 게임의 기본 기능(로컬 플레이)은 이용할 수 있습니다. 클라우드 저장 등 일부 기능만 계정이 필요합니다.</p>
+<p>① 계정은 만 ${MIN_AGE}세 이상만 만들 수 있습니다. 만 ${MIN_AGE}세 미만은 계정을 만들 수 없습니다.<br>
+② 게임의 기본 기능(로컬 플레이)은 계정 없이 <b>나이 제한 없이</b> 누구나 이용할 수 있으며, 이 경우 운영자는 개인정보를 수집하지 않습니다. 클라우드 저장 등 일부 기능만 계정이 필요합니다.</p>
 
 <h5>제4조 (계정 관리)</h5>
 <p>① 이용자는 정확한 이메일을 사용해야 하며, 비밀번호와 계정을 스스로 안전하게 관리할 책임이 있습니다.<br>
@@ -116,6 +116,13 @@
 
 <h5>10. 방침의 변경</h5>
 <p>이 방침을 변경하는 경우 시행 7일 전(수집 항목·목적 등 중요한 변경은 30일 전)에 서비스 내 또는 이메일로 알리고, 필요하면 다시 동의를 받습니다.</p>
+
+<h4>제3부 데이터 출처 및 라이선스</h4>
+<ul>
+<li><b>현대 지도·국경 (현실 지도)</b>: <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a> 1:50m 데이터 (퍼블릭 도메인). <a href="https://github.com/topojson/world-atlas" target="_blank" rel="noopener">world-atlas</a> TopoJSON(ISC 라이선스)을 통해 사용했습니다.</li>
+<li><b>역사 시나리오 국경</b>: <a href="https://github.com/aourednik/historical-basemaps" target="_blank" rel="noopener">Historical Basemaps</a> (aourednik), <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. 게임에 맞게 단순화·가공했습니다.</li>
+</ul>
+<p>위 데이터가 보여 주는 국경과 지명은 게임 표현을 위한 것이며 특정 국가의 공식 입장을 나타내지 않습니다.</p>
 `;
 
   // ---------- English ----------
@@ -127,7 +134,7 @@
 <p>"World Fate" (the "Service") is a web game operated by ${OPERATOR.name} (the "Operator"). By creating an account you agree to these Terms and to the Privacy Policy in Part 2. If you do not agree, do not create an account; you can still play locally without one.</p>
 
 <h5>2. Eligibility</h5>
-<p>You must be at least ${MIN_AGE} years old to create an account. If we learn that an account belongs to someone under ${MIN_AGE}, we will delete it and its data.</p>
+<p>You must be at least ${MIN_AGE} years old to create an account. If we learn that an account belongs to someone under ${MIN_AGE}, we will delete it and its data. Local play without an account has no age limit and does not send us any personal data.</p>
 
 <h5>3. Your account</h5>
 <p>Use a valid email address and keep your password secure. You are responsible for activity on your account. Do not share, sell or transfer it. Tell us promptly if you suspect unauthorized access.</p>
@@ -192,6 +199,13 @@
 
 <h5>9. Changes</h5>
 <p>We will notify you at least 7 days before changes take effect (30 days for material changes) and ask for renewed consent where required.</p>
+
+<h4>Part 3 · Data sources and licenses</h4>
+<ul>
+<li><b>Modern map and borders (real-world map)</b>: <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a> 1:50m data (public domain), used via <a href="https://github.com/topojson/world-atlas" target="_blank" rel="noopener">world-atlas</a> TopoJSON (ISC license).</li>
+<li><b>Historical scenario borders</b>: <a href="https://github.com/aourednik/historical-basemaps" target="_blank" rel="noopener">Historical Basemaps</a> by aourednik, licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Simplified and modified for this game.</li>
+</ul>
+<p>Borders and place names shown are for gameplay and do not express any official position of any state.</p>
 `;
 
   const TEXT = { ko: KO, en: EN };
