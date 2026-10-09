@@ -266,13 +266,20 @@
   $('tmCancel').onclick = () => hide(false);
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && $('termsDlg').classList.contains('open')) { e.stopImmediatePropagation(); hide(false); }
+    if (e.key === 'Escape' && $('termsDlg').classList.contains('open') && !document.body.hasAttribute('data-terms-page')) { e.stopImmediatePropagation(); hide(false); }
   }, true);
 
   // 약관 보기만 (동의 절차 없음)
   document.querySelectorAll('[data-open-terms]').forEach(el => {
     el.addEventListener('click', e => { e.preventDefault(); show(false); });
   });
+
+  // terms.html 단독 페이지: 열자마자 약관을 보여 주고, 닫기는 게임으로 이동
+  if (document.body.hasAttribute('data-terms-page')) {
+    show(false);
+    $('tmCancel').onclick = () => { location.href = 'index.html'; };
+    $('tmCancel').textContent = lang === 'ko' ? '게임으로' : 'To the game';
+  }
 
   window.WFTerms = {
     version: VERSION,

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>World Fate · 이용약관 · 개인정보 처리방침 / Terms · Privacy</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body data-terms-page>
+<!-- 이용약관 · 개인정보 처리방침 단독 페이지 (소셜 로그인 앱 등록용 URL). 내용은 terms.js 하나로 관리됩니다. -->
+<div id="termsDlg" class="dialog">
+  <div class="dlgBox wide tmBox">
+    <h3 id="tmTitle"></h3>
+    <div class="tmLang"><button id="tmLangKo">한국어</button><button id="tmLangEn">English</button></div>
+    <div id="tmBody" class="tmBody" tabindex="0"></div>
+    <div id="tmConsent" class="tmConsent">
+      <label class="tmAll"><input type="checkbox" id="tmAll"><span></span></label>
+      <label><input type="checkbox" id="tm_c1"><span></span></label>
+      <label><input type="checkbox" id="tm_c2"><span></span></label>
+      <label><input type="checkbox" id="tm_c3"><span></span></label>
+      <label><input type="checkbox" id="tm_c4"><span></span></label>
+    </div>
+    <div class="dlgSub" id="tmNote"></div>
+    <div class="dlgBtns"><button id="tmCancel"></button><button id="tmOk" class="primary" disabled></button></div>
+  </div>
+</div>
+<script src="terms.js"></script>
+</body>
+</html>
