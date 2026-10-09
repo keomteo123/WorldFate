@@ -20,11 +20,8 @@
   }
 
   function friendly(m) {
-    if (/invalid login/i.test(m)) return '이메일 또는 비밀번호가 맞지 않아요.';
-    if (/already registered|already been registered/i.test(m)) return '이미 가입된 이메일이에요.';
-    if (/password.*(at least|short|characters)/i.test(m)) return '비밀번호는 6자 이상이어야 해요.';
-    if (/invalid.*email|email.*invalid/i.test(m)) return '이메일 형식이 올바르지 않아요.';
-    if (/not confirmed/i.test(m)) return '이메일 인증을 먼저 완료해 주세요.';
+    if (/access.?denied|denied/i.test(m)) return '로그인이 취소되었어요.';
+    if (/provider.*(not enabled|disabled)|unsupported provider/i.test(m)) return '이 로그인 방법은 아직 준비 중이에요.';
     if (/rate limit/i.test(m)) return '요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요.';
     return m;
   }
@@ -100,33 +97,37 @@
     m.style.color = bad ? '#e08a7a' : '';
   }
 
-  async function auth(kind) {
-    const email = $('acEmail').value.trim(), password = $('acPass').value;
-    if (!email || !password) return msg('이메일과 비밀번호를 입력해 주세요.', true);
-    if (kind === 'signup') {
-      if (!(await WFTerms.ask())) return msg('약관에 동의하셔야 가입할 수 있어요.', true);
+  // ---------- 소셜 로그인 (Google · Discord) ----------
+  const CONSENT_KEY = 'wf_terms_ok'; // 이 기기에서 동의한 약관 버전
+
+  async function oauthStart(provider) {
+    let agreed = null;
+    try { agreed = localStorage.getItem(CONSENT_KEY); } catch (e) {}
+    // 처음이거나 약관 버전이 바뀌었으면 이동 전에 동의를 받는다 (가입인지 로그인인지는 제공자 쪽에서 구분되지 않음)
+    if (agreed !== WFTerms.version) {
+      if (!(await WFTerms.ask())) return msg('약관에 동의하셔야 로그인할 수 있어요.', true);
+      try { localStorage.setItem(CONSENT_KEY, WFTerms.version); } catch (e) {}
     }
-    $('acLogin').disabled = $('acSignup').disabled = true;
-    msg('잠시만요…');
+    const back = encodeURIComponent(location.origin + location.pathname);
+    location.href = `${SB_URL}/auth/v1/authorize?provider=${provider}&redirect_to=${back}`;
+  }
+
+  // 제공자에서 돌아온 주소(#access_token=…)를 세션으로 바꾼다
+  async function oauthFinish() {
+    const p = new URLSearchParams(location.hash.replace(/^#/, ''));
+    const err = p.get('error_description') || new URLSearchParams(location.search).get('error_description');
+    const clean = () => history.replaceState(null, '', location.pathname);
+    if (err) { clean(); open('accountDlg'); return msg(friendly(err), true); }
+    const access = p.get('access_token');
+    if (!access) return;
+    clean();
     try {
-      if (kind === 'signup') {
-        const r = await sb('/auth/v1/signup', { method: 'POST', body: { email, password, data: WFTerms.consentData() } });
-        if (!r.access_token) { msg('가입 완료! 이메일로 온 인증 링크를 누른 뒤 로그인해 주세요.'); return; }
-        storeSession(r);
-      } else {
-        storeSession(await sb('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password } }));
-      }
-      $('acPass').value = '';
-      msg('');
-      renderAccount();
-      renderSettings();
+      const user = await sb('/auth/v1/user', { token: access });
+      storeSession({ access_token: access, refresh_token: p.get('refresh_token'), expires_in: Number(p.get('expires_in')) || 3600, user });
+      sb('/auth/v1/user', { method: 'PUT', token: access, body: { data: WFTerms.consentData() } }).catch(() => {});
       renderAccount();
       authChanged();
-    } catch (e) {
-      msg(e.message, true);
-    } finally {
-      $('acLogin').disabled = $('acSignup').disabled = false;
-    }
+    } catch (e) { msg(e.message, true); }
   }
 
   async function logout() {
@@ -163,10 +164,9 @@
   $('stMuted').onchange = () => WFAudio.set({ muted: $('stMuted').checked });
   WFAudio.onChange(() => { if ($('settingsDlg').classList.contains('open')) renderSettings() });
 
-  $('acLogin').onclick = () => auth('login');
-  $('acSignup').onclick = () => auth('signup');
+  $('acGoogle').onclick = () => oauthStart('google');
+  $('acDiscord').onclick = () => oauthStart('discord');
   $('acLogout').onclick = logout;
-  $('acPass').addEventListener('keydown', e => { if (e.key === 'Enter') auth('login'); });
 
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
@@ -179,4 +179,5 @@
   try { session = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch (e) { session = null; }
   renderAccount();
   if (session) authChanged();
+  oauthFinish();
 })();
