@@ -24,8 +24,22 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 & git merge-base --is-ancestor origin/mm HEAD
-if ($LASTEXITCODE -ne 0) {
-    throw 'The remote mm branch has new commits. Sync those changes before auto-publishing.'
+$remoteIsAncestor = $LASTEXITCODE
+if ($remoteIsAncestor -eq 1) {
+    & git merge-base --is-ancestor HEAD origin/mm
+    $localIsAncestor = $LASTEXITCODE
+    if ($localIsAncestor -eq 0) {
+        & git merge --ff-only origin/mm
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Could not fast-forward to origin/mm without overwriting local changes. Resolve the conflict and restart auto-publishing.'
+        }
+    } elseif ($localIsAncestor -eq 1) {
+        throw 'Local and remote mm branches have diverged. Resolve the branch history before auto-publishing.'
+    } else {
+        throw 'Could not determine whether the local mm branch can be fast-forwarded.'
+    }
+} elseif ($remoteIsAncestor -ne 0) {
+    throw 'Could not determine whether the remote mm branch is up to date.'
 }
 
 $aheadCount = (& git rev-list --count origin/mm..HEAD).Trim()
