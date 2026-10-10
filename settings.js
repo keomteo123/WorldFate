@@ -164,7 +164,6 @@
   $('stMuted').onchange = () => WFAudio.set({ muted: $('stMuted').checked });
   WFAudio.onChange(() => { if ($('settingsDlg').classList.contains('open')) renderSettings() });
 
-  $('acGoogle').onclick = () => oauthStart('google');
   $('acDiscord').onclick = () => oauthStart('discord');
   $('acLogout').onclick = logout;
 

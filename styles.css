@@ -19,6 +19,8 @@ html, body {
   font-family: Georgia, "Noto Serif KR", "Malgun Gothic", serif;
 }
 body { user-select: none; }
+/* 더블 탭 확대 방지 (핀치 확대는 지도 캔버스가 직접 처리) */
+html, body, button, select, input, .dialog, .dlgBox, .panel, #top { touch-action: manipulation; }
 #game {
   position: fixed;
   inset: 0;
@@ -136,6 +138,7 @@ button.active {
 
 button, select, input { padding: 5px 8px; font-size: 11px; }
 select, input { width: 100%; }
+input[type="checkbox"], input[type="radio"] { width: auto; padding: 0; }
 
 #left, #right {
   top: 62px;
@@ -403,8 +406,12 @@ button:disabled { opacity: .4; cursor: default; transform: none; }
 .setRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; font-size: 12px; color: var(--muted); }
 .setRow select, .setRow input[type="email"], .setRow input[type="password"] { flex: 1; max-width: 220px; }
 .setRow input[type="range"] { flex: 1; max-width: 220px; }
-.setRow > span { flex: 1 1 auto; }
-.setRow input[type="checkbox"] { flex: 0 0 auto; }
+.setRow > span { flex: 1 1 auto; min-width: 0; word-break: keep-all; overflow-wrap: break-word; }
+.setRow input[type="checkbox"] { flex: 0 0 auto; width: 18px; height: 18px; }
+.setRow input[type="range"], .setRow select { flex: 1 1 120px; min-width: 100px; }
+.dlgSub, .tmConsent label, .dlgBtns button { word-break: keep-all; overflow-wrap: break-word; }
+.dlgBtns { flex-wrap: wrap; }
+.tmConsent input { flex: 0 0 auto; width: 16px; height: 16px; }
 #acMsg { min-height: 16px; text-align: center; }
 
 /* 이용약관 · 개인정보 처리방침 */
@@ -425,3 +432,52 @@ button:disabled { opacity: .4; cursor: default; transform: none; }
 .tmConsent label { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
 .tmConsent input { margin-top: 2px; }
 .tmConsent .tmAll { padding-bottom: 5px; border-bottom: 1px solid var(--line); font-weight: bold; color: var(--gold-bright); }
+
+/* ==========================================================================
+   화면 배율 (ui-scale.js가 --ui를 정한다. 데스크톱은 화면이 클수록 UI를 키우고, 휴대폰은 터치용으로 키운다)
+   zoom을 쓰면 vh/vw로 정한 크기도 같이 커지므로, 화면에 맞춰야 하는 값은 --ui로 나눠 준다.
+   ========================================================================== */
+:root { --ui: 1; }
+#top, .panel, #help, #toast, .homeCard, .dlgBox, #modalBox { zoom: var(--ui); }
+
+#left, #right { max-height: calc((100vh - 62px * var(--ui) - 20px) / var(--ui)); }
+.dlgBox { width: min(520px, calc(94vw / var(--ui))); max-height: calc(88vh / var(--ui)); }
+.dlgBox.wide { width: min(940px, calc(96vw / var(--ui))); }
+.tmBody { max-height: calc(46vh / var(--ui)); }
+#mapGrid { max-height: calc(50vh / var(--ui)); }
+#slotList { max-height: calc(52vh / var(--ui)); }
+#modalBox { max-width: calc(94vw / var(--ui)); }
+
+/* 휴대폰 · 좁은 창: 글자와 버튼을 손가락에 맞게 키운다 */
+@media (max-width: 900px) {
+  .panel { font-size: 12px; }
+  .panel h3 { font-size: 13px; }
+  .panel h4 { font-size: 11px; }
+  .log { font-size: 11.5px; }
+  #top button { min-height: 36px; padding: 6px 11px; font-size: 12px; }
+  .actionGrid button { min-height: 36px; font-size: 11px; }
+  .dlgBtns button { min-height: 40px; }
+  .setRow, .saveName, .optRow label { font-size: 13px; }
+  .homeMenu { width: min(300px, 86vw); }
+  .homeMenu button { padding: 13px 14px; }
+  .helpList { font-size: 13px; }
+  .tmBody { font-size: 13px; }
+  #left, #right { height: 38dvh; padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+  #right { height: 42dvh; }
+}
+/* 터치 기기: 입력칸을 누를 때 브라우저가 화면을 확대하지 않도록 16px 이상 */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: 16px; }
+  .optRow input[type="range"], .setRow input[type="range"] { min-height: 28px; }
+}
+/* 휴대폰을 가로로 눕힌 경우: 세로가 짧으니 아래 서랍 대신 좌우로 나눠 지도를 가리지 않게 */
+@media (max-width: 900px) and (max-height: 520px) {
+  #left, #right { width: 46% !important; height: 62dvh; top: auto; bottom: 0; border-radius: 12px 12px 0 0; }
+  #left { left: 0; right: auto; }
+  #right { left: auto; right: 0; height: 62dvh; }
+  .homeTitle { font-size: 34px; }
+  .homeSub { margin-bottom: 12px; }
+  .homeMenu { gap: 6px; }
+  .homeMenu button { padding: 8px 12px; }
+  .dlgBox { max-height: calc(94dvh / var(--ui)); }
+}

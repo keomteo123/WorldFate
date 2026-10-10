@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>World Fate · 로고</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<style>
+  body { margin: 0; min-height: 100vh; background: #0f0b08; color: #f3e9d0; font-family: Georgia, "Noto Serif KR", "Malgun Gothic", serif;
+    display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 32px 16px; }
+  h1 { margin: 0; font-size: 18px; color: #ffe3a0; font-weight: 400; letter-spacing: 2px; }
+  figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  figure img { max-width: 100%; height: auto; }
+  figcaption { font-size: 12px; color: #b3a384; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  button { background: rgba(34, 24, 15, .93); color: #ffe3a0; border: 1px solid rgba(206, 168, 96, .38); border-radius: 3px; padding: 6px 12px; font: inherit; font-size: 12px; cursor: pointer; }
+  button:hover { border-color: #ffe3a0; }
+  a { color: #b3a384; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>WORLD FATE · LOGO</h1>
+
+<figure>
+  <img src="logo.svg" width="256" height="256" alt="World Fate 아이콘">
+  <figcaption>아이콘 (Discord 앱 아이콘 등: 512×512 PNG)</figcaption>
+  <div class="row">
+    <button data-png="logo.svg" data-w="512" data-h="512" data-name="worldfate-icon-512.png">PNG 512 저장</button>
+    <button data-png="logo.svg" data-w="1024" data-h="1024" data-name="worldfate-icon-1024.png">PNG 1024 저장</button>
+    <a href="logo.svg" download>SVG</a>
+  </div>
+</figure>
+
+<figure>
+  <img src="logo-wordmark.svg" width="720" height="208" alt="World Fate 가로 로고">
+  <figcaption>가로 로고</figcaption>
+  <div class="row">
+    <button data-png="logo-wordmark.svg" data-w="1800" data-h="520" data-name="worldfate-wordmark.png">PNG 저장</button>
+    <a href="logo-wordmark.svg" download>SVG</a>
+  </div>
+</figure>
+
+<a href="index.html">← 게임으로</a>
+
+<script>
+  // SVG를 캔버스에 그려 PNG로 저장 (글꼴은 이 기기에 설치된 Georgia/Noto Serif KR 사용)
+  document.querySelectorAll('[data-png]').forEach(b => {
+    b.onclick = () => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = +b.dataset.w; c.height = +b.dataset.h;
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(blob => {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob); a.download = b.dataset.name; a.click();
+          setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        }, 'image/png');
+      };
+      img.src = b.dataset.png;
+    };
+  });
+</script>
+</body>
+</html>

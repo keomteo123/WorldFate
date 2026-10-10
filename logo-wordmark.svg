@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" width="900" height="260" role="img" aria-label="World Fate">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="20%" r="85%">
+      <stop offset="0" stop-color="#3a2a18"/>
+      <stop offset="1" stop-color="#0f0b08"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe3a0"/>
+      <stop offset="1" stop-color="#dcb35c"/>
+    </linearGradient>
+  </defs>
+  <rect width="900" height="260" rx="28" fill="url(#bg)"/>
+  <!-- 엠블럼 (logo.svg를 축소) -->
+  <g transform="translate(30 30) scale(.4)">
+    <g fill="none" stroke="url(#gold)" stroke-linecap="round">
+      <circle cx="256" cy="256" r="150" stroke-width="12"/>
+      <ellipse cx="256" cy="256" rx="70" ry="150" stroke-width="6" opacity=".75"/>
+      <line x1="256" y1="106" x2="256" y2="406" stroke-width="6" opacity=".75"/>
+      <line x1="106" y1="256" x2="406" y2="256" stroke-width="6" opacity=".75"/>
+      <line x1="126" y1="181" x2="386" y2="181" stroke-width="5" opacity=".5"/>
+      <line x1="126" y1="331" x2="386" y2="331" stroke-width="5" opacity=".5"/>
+      <path d="M70 352 C 190 450 300 110 440 170" stroke="#ffe3a0" stroke-width="10"/>
+    </g>
+    <circle cx="440" cy="170" r="15" fill="#ffe3a0"/>
+    <circle cx="440" cy="170" r="26" fill="none" stroke="#ffe3a0" stroke-width="3" opacity=".5"/>
+  </g>
+  <text x="270" y="148" font-family="Georgia, 'Noto Serif KR', serif" font-size="104" font-weight="700" fill="#f3e9d0">World <tspan fill="#dcb35c">Fate</tspan></text>
+  <text x="274" y="196" font-family="Georgia, 'Noto Serif KR', serif" font-size="26" letter-spacing="6" fill="#b3a384">REALM BUILDER SIMULATOR</text>
+</svg>
