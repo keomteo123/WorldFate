@@ -31,8 +31,15 @@
     quake: 2800, storm: 4400, drought: 4000, flood: 3800, plague: 4000, volcano: 4400, meteor: 3200, lightning: 1100,
     bless: 1600, curse: 1600, link: 2100, spawn: 1700, collapse: 1900
   };
+  // ----- 연출 크기 -----
+  // RADIUS: 효과의 반지름(지도 칸). 실제로 피해가 미치는 범위(game.js의 BLAST · POWER_RADIUS)와 비슷하게 맞춰 둔다.
+  // SCALE: 모든 연출을 한꺼번에 키우거나 줄이는 배율. 연출이 크거나 작게 느껴지면 이 숫자 하나만 바꾸면 된다.
+  // ZOOM_MIN: 지도를 아주 작게 보고 있어도 이 배율 아래로는 줄이지 않는다 (너무 작으면 안 보인다).
+  const SCALE = 1;
+  const ZOOM_MIN = 0.8, ZOOM_MAX = 2.6;
+  const RADIUS = { quake: 32, storm: 36, drought: 30, flood: 32, plague: 28, volcano: 26, meteor: 24, collapse: 32, spawn: 28 };
   // 화면 흔들림: [세기(px), 길이(ms), 시작 지연(ms)]
-  const SHAKE = { quake: [8, 1300, 0], volcano: [4, 800, 0], meteor: [13, 950, 900], lightning: [2.5, 180, 0], collapse: [3, 500, 0] };
+  const SHAKE = { quake: [6, 1200, 0], volcano: [3, 700, 0], meteor: [9, 850, 900], lightning: [2, 160, 0], collapse: [2.5, 450, 0] };
   const METEOR_HIT = 900 / DUR.meteor; // 운석이 땅에 닿는 시점 (game.js는 이 시간에 맞춰 피해를 준다)
 
   let list = [];
@@ -69,7 +76,7 @@
     for (const f of list) {
       const k = (t - f.t0) / f.dur;
       const sx = cam.x + f.x * cam.zoom, sy = cam.y + f.y * cam.zoom;
-      const z = Math.max(1.1, Math.min(cam.zoom * 1.2, 3.2)); // 멀리서 봐도 너무 작아지지 않게
+      const z = clamp(cam.zoom, ZOOM_MIN, ZOOM_MAX) * SCALE; // 지도 배율을 따라가되, 멀리서 봐도 너무 작아지지 않게
       ctx.save();
       DRAW[f.kind](ctx, f, k, sx, sy, z, t, cam, W, H);
       ctx.restore();
@@ -215,10 +222,10 @@
       f.sparks = Array.from({ length: 9 }, () => ({ a: r() * TAU, l: 0.5 + r() * 0.8 }));
     },
     bless(f, r) {
-      f.sp = Array.from({ length: 11 }, () => ({ x: (r() - 0.5) * 48, h: 40 + r() * 80, s: 2.5 + r() * 3.5, ph: r() * TAU }));
+      f.sp = Array.from({ length: 11 }, () => ({ x: (r() - 0.5) * 34, h: 26 + r() * 56, s: 1.8 + r() * 2.6, ph: r() * TAU }));
     },
     curse(f, r) {
-      f.sp = Array.from({ length: 10 }, () => ({ x: (r() - 0.5) * 52, h: 50 + r() * 70, s: 3 + r() * 3, d: r() * 0.3 }));
+      f.sp = Array.from({ length: 10 }, () => ({ x: (r() - 0.5) * 36, h: 34 + r() * 48, s: 2.1 + r() * 2.1, d: r() * 0.3 }));
     },
     spawn(f, r) {
       f.rays = Array.from({ length: 14 }, (_, i) => ({ a: (i / 14) * TAU + (r() - 0.5) * 0.2, l: 0.7 + r() * 0.6 }));
@@ -233,23 +240,23 @@
   const DRAW = {
     // 지진: 땅이 갈라지고 충격파가 퍼진다
     quake(ctx, f, k, sx, sy, z) {
-      const R = 46 * z;
+      const R = RADIUS.quake * z;
       for (let i = 0; i < 3; i++) {
         const kk = clamp(k * 1.7 - i * 0.2, 0, 1);
         if (kk <= 0 || kk >= 1) continue;
         const r = R * (0.15 + 1.15 * easeOut(kk));
         ctx.beginPath();
         for (let a = 0; a <= 28; a++) {
-          const ang = (a / 28) * TAU, rr = r + f.jag[i][a % 28] * 7 * z * (0.4 + kk);
+          const ang = (a / 28) * TAU, rr = r + f.jag[i][a % 28] * 5 * z * (0.4 + kk);
           const px = sx + Math.cos(ang) * rr, py = sy + Math.sin(ang) * rr * 0.82;
           a ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
         }
         ctx.closePath();
         ctx.strokeStyle = `rgba(52,30,14,${(1 - kk) * 0.5})`;
-        ctx.lineWidth = Math.max(3, 6.5 * z * (1 - kk * 0.5));
+        ctx.lineWidth = Math.max(2.4, 5 * z * (1 - kk * 0.5));
         ctx.stroke();
         ctx.strokeStyle = `rgba(226,182,120,${(1 - kk) * 0.9})`;
-        ctx.lineWidth = Math.max(1.3, 2.4 * z * (1 - kk * 0.5));
+        ctx.lineWidth = Math.max(1.1, 1.9 * z * (1 - kk * 0.5));
         ctx.stroke();
       }
       const a = k < 0.6 ? 1 : (1 - k) / 0.4;
@@ -264,14 +271,14 @@
       ctx.translate(-1.2, -1.2);
       for (const d of f.dust) {
         const e = easeOut(k);
-        disc(ctx, sx + Math.cos(d.a) * d.d * R * (0.3 + 0.7 * e), sy + Math.sin(d.a) * d.d * R * 0.8 * (0.3 + 0.7 * e) - 16 * z * k, d.s * z * (0.8 + k), `rgba(198,172,130,${(1 - k) * 0.45})`);
+        disc(ctx, sx + Math.cos(d.a) * d.d * R * (0.3 + 0.7 * e), sy + Math.sin(d.a) * d.d * R * 0.8 * (0.3 + 0.7 * e) - 11 * z * k, d.s * z * (0.6 + 0.7 * k), `rgba(198,172,130,${(1 - k) * 0.45})`);
       }
     },
 
     // 태풍: 눈을 중심으로 소용돌이치는 구름과 비
     storm(ctx, f, k, sx, sy, z, t) {
-      const R = 54 * z, a = fade(k, 0.14, 0.25);
-      sx += Math.sin(k * 3.2) * 8 * z * f.dir;
+      const R = RADIUS.storm * z, a = fade(k, 0.14, 0.25);
+      sx += Math.sin(k * 3.2) * 5 * z * f.dir;
       glow(ctx, sx, sy, R * 1.15, [[0, 'rgba(70,90,120,0)'], [0.12, `rgba(92,112,146,${0.1 * a})`], [0.4, `rgba(108,130,166,${0.5 * a})`], [0.78, `rgba(84,104,138,${0.28 * a})`], [1, 'rgba(84,104,138,0)']]);
       const spin = -(t / 520) * f.dir;
       ctx.lineCap = 'round';
@@ -283,28 +290,28 @@
           s ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
         }
         ctx.strokeStyle = `rgba(236,243,250,${0.2 * a})`;
-        ctx.lineWidth = 9 * z;
+        ctx.lineWidth = 6.5 * z;
         ctx.stroke();
         ctx.strokeStyle = `rgba(246,250,255,${0.72 * a})`;
-        ctx.lineWidth = 2.6 * z;
+        ctx.lineWidth = Math.max(1.3, 2 * z);
         ctx.stroke();
       }
-      ring(ctx, sx, sy, 0.12 * R, `rgba(250,252,255,${0.85 * a})`, 2 * z);
+      ring(ctx, sx, sy, 0.12 * R, `rgba(250,252,255,${0.85 * a})`, Math.max(1.1, 1.6 * z));
       ctx.strokeStyle = `rgba(190,216,242,${0.6 * a})`;
       ctx.lineWidth = Math.max(1, 1.2 * z);
       ctx.beginPath();
       for (const d of f.rain) {
         const off = (t / 300 + d.ph) % 1;
-        const px = sx + Math.cos(d.a) * d.d * R + (off - 0.5) * 12 * z, py = sy + Math.sin(d.a) * d.d * R + (off - 0.5) * 22 * z;
+        const px = sx + Math.cos(d.a) * d.d * R + (off - 0.5) * 8 * z, py = sy + Math.sin(d.a) * d.d * R + (off - 0.5) * 15 * z;
         ctx.moveTo(px, py);
-        ctx.lineTo(px + 3 * z, py + 7 * z);
+        ctx.lineTo(px + 2.2 * z, py + 5 * z);
       }
       ctx.stroke();
     },
 
     // 가뭄: 이글거리는 볕과 갈라지는 땅
     drought(ctx, f, k, sx, sy, z, t) {
-      const R = 46 * z, a = fade(k, 0.15, 0.3);
+      const R = RADIUS.drought * z, a = fade(k, 0.15, 0.3);
       glow(ctx, sx, sy, R * 1.2, [[0, `rgba(255,176,64,${0.42 * a})`], [0.55, `rgba(240,140,50,${0.2 * a})`], [1, 'rgba(240,140,50,0)']]);
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       ctx.strokeStyle = `rgba(92,50,18,${a * 0.8})`;
@@ -319,14 +326,14 @@
         ctx.globalAlpha = Math.sin(rise * Math.PI);
         ctx.beginPath();
         for (let s = 0; s <= 8; s++) {
-          const px = bx + Math.sin(s * 1.1 + t / 180 + w.ph) * 3.2 * z, py = by - s * 3.2 * z;
+          const px = bx + Math.sin(s * 1.1 + t / 180 + w.ph) * 2.4 * z, py = by - s * 2.4 * z;
           s ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
         }
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
       // 해
-      const hx = sx, hy = sy - R * 1.05, hr = 9 * z;
+      const hx = sx, hy = sy - R * 1.05, hr = 6.5 * z;
       glow(ctx, hx, hy, hr * 3.2, [[0, `rgba(255,224,130,${0.55 * a})`], [1, 'rgba(255,224,130,0)']]);
       ctx.strokeStyle = `rgba(255,214,110,${a * 0.9})`;
       ctx.lineWidth = Math.max(1.4, 2 * z);
@@ -342,7 +349,7 @@
 
     // 홍수: 물이 차올랐다가 빠진다
     flood(ctx, f, k, sx, sy, z, t) {
-      const R = 48 * z;
+      const R = RADIUS.flood * z;
       const r = R * easeOut(k * 1.7);
       const a = k < 0.62 ? Math.min(1, k * 8) : (1 - k) / 0.38;
       ctx.beginPath();
@@ -370,13 +377,13 @@
 
     // 전염병: 퍼져 나가는 푸르스름한 독기
     plague(ctx, f, k, sx, sy, z, t) {
-      const R = 44 * z, a = fade(k, 0.12, 0.35);
+      const R = RADIUS.plague * z, a = fade(k, 0.12, 0.35);
       glow(ctx, sx, sy, R * 1.15, [[0, `rgba(120,178,62,${0.36 * a})`], [0.6, `rgba(96,150,50,${0.2 * a})`], [1, 'rgba(96,150,50,0)']]);
       const e = easeOut(k);
       for (const b of f.blobs) {
         const px = sx + Math.cos(b.a) * b.d * R * (0.35 + 0.65 * e) + Math.sin(t / 520 + b.ph) * 4 * z;
-        const py = sy + Math.sin(b.a) * b.d * R * (0.35 + 0.65 * e) * 0.85 - k * 20 * z * b.d;
-        disc(ctx, px, py, b.s * z * (0.7 + 0.5 * k), `rgba(146,200,88,${a * 0.42})`);
+        const py = sy + Math.sin(b.a) * b.d * R * (0.35 + 0.65 * e) * 0.85 - k * 13 * z * b.d;
+        disc(ctx, px, py, b.s * 0.65 * z * (0.7 + 0.5 * k), `rgba(146,200,88,${a * 0.42})`);
       }
       for (let i = 0; i < 2; i++) {
         const u = (t / 1300 + i / 2) % 1;
@@ -384,18 +391,18 @@
       }
       for (let i = 0; i < 9; i++) {
         const ang = (i / 9) * TAU + t / 900 * (i % 2 ? 1 : -1), rr = R * (0.45 + 0.2 * Math.sin(t / 400 + i));
-        disc(ctx, sx + Math.cos(ang) * rr, sy + Math.sin(ang) * rr * 0.85, 1.8 * z, `rgba(218,248,160,${a * 0.9})`);
+        disc(ctx, sx + Math.cos(ang) * rr, sy + Math.sin(ang) * rr * 0.85, Math.max(1.1, 1.4 * z), `rgba(218,248,160,${a * 0.9})`);
       }
     },
 
     // 화산: 분화구가 달아오르고 용암 덩이와 재가 솟구친다
     volcano(ctx, f, k, sx, sy, z, t) {
-      const R = 40 * z, a = fade(k, 0.06, 0.35);
+      const R = RADIUS.volcano * z, a = fade(k, 0.06, 0.35);
       const kk = clamp(k * 4, 0, 1);
       if (kk < 1) ring(ctx, sx, sy, R * 1.4 * easeOut(kk), `rgba(255,150,60,${(1 - kk) * 0.75})`, Math.max(1.5, 3 * z));
       for (const p of f.ash) {
         const px = sx + p.ox * R * (0.15 + k * 0.9), py = sy - R * 0.25 - k * R * (0.9 + p.sp * 1.1);
-        disc(ctx, px, py, (7 + p.s * 9) * z * (0.5 + k * 1.4), `rgba(58,52,48,${0.36 * Math.min(1, k * 6) * (1 - k)})`);
+        disc(ctx, px, py, (4.5 + p.s * 6) * z * (0.5 + k * 1.4), `rgba(58,52,48,${0.36 * Math.min(1, k * 6) * (1 - k)})`);
       }
       const pulse = 0.85 + 0.15 * Math.sin(t / 90);
       glow(ctx, sx, sy, R * 0.95 * pulse, [[0, `rgba(255,236,170,${0.95 * a})`], [0.22, `rgba(255,150,50,${0.75 * a})`], [0.6, `rgba(214,70,24,${0.32 * a})`], [1, 'rgba(214,70,24,0)']]);
@@ -407,32 +414,32 @@
         const [x1, y1] = pos(Math.max(0, tt - 0.09)), [x2, y2] = pos(tt);
         const al = 1 - tt * 0.5;
         ctx.strokeStyle = `rgba(255,132,36,${al * 0.75})`;
-        ctx.lineWidth = b.s * z * 0.9;
+        ctx.lineWidth = Math.max(1, b.s * z * 0.65);
         ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-        disc(ctx, x2, y2, b.s * z, `rgba(255,226,130,${al})`);
+        disc(ctx, x2, y2, Math.max(1.2, b.s * z * 0.72), `rgba(255,226,130,${al})`);
       }
     },
 
     // 운석: 불덩이가 비스듬히 떨어져 터지고, 그을린 구덩이가 남는다
     meteor(ctx, f, k, sx, sy, z, t, cam, W, H) {
-      const R = 42 * z, hit = METEOR_HIT;
+      const R = RADIUS.meteor * z, hit = METEOR_HIT;
       if (k < hit) {
         const p = easeIn(0.35 + 0.65 * (k / hit)) / easeIn(1);
         const fromX = sx + H * 0.5, fromY = sy - H * 0.85;
         const x = fromX + (sx - fromX) * p, y = fromY + (sy - fromY) * p;
-        const len = 150 * z, dx = (fromX - sx), dy = (fromY - sy), dl = Math.hypot(dx, dy) || 1;
+        const len = 105 * z, dx = (fromX - sx), dy = (fromY - sy), dl = Math.hypot(dx, dy) || 1;
         const tx = x + (dx / dl) * len, ty = y + (dy / dl) * len;
         ctx.lineCap = 'round';
         let g = ctx.createLinearGradient(x, y, tx, ty);
         g.addColorStop(0, 'rgba(255,170,60,.6)'); g.addColorStop(1, 'rgba(255,120,30,0)');
-        ctx.strokeStyle = g; ctx.lineWidth = 15 * z;
+        ctx.strokeStyle = g; ctx.lineWidth = 10 * z;
         ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tx, ty); ctx.stroke();
         g = ctx.createLinearGradient(x, y, tx, ty);
         g.addColorStop(0, 'rgba(255,246,214,.98)'); g.addColorStop(0.5, 'rgba(255,196,96,.5)'); g.addColorStop(1, 'rgba(255,170,60,0)');
-        ctx.strokeStyle = g; ctx.lineWidth = 5 * z;
+        ctx.strokeStyle = g; ctx.lineWidth = 3.5 * z;
         ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tx, ty); ctx.stroke();
-        glow(ctx, x, y, 24 * z, [[0, 'rgba(255,250,230,1)'], [0.3, 'rgba(255,190,80,.75)'], [1, 'rgba(255,140,40,0)']]);
-        disc(ctx, x, y, 5.5 * z, 'rgba(60,40,28,.95)');
+        glow(ctx, x, y, 16 * z, [[0, 'rgba(255,250,230,1)'], [0.3, 'rgba(255,190,80,.75)'], [1, 'rgba(255,140,40,0)']]);
+        disc(ctx, x, y, 3.8 * z, 'rgba(60,40,28,.95)');
         // 떨어질 자리에 드리우는 그림자
         ctx.beginPath();
         ctx.ellipse(sx, sy, R * 0.4 * p, R * 0.28 * p, 0, 0, TAU);
@@ -441,7 +448,7 @@
         return;
       }
       const q = (k - hit) / (1 - hit);
-      if (!calm.matches && q < 0.14) { ctx.fillStyle = `rgba(255,244,220,${0.3 * (1 - q / 0.14)})`; ctx.fillRect(0, 0, W, H); }
+      if (!calm.matches && q < 0.12) { ctx.fillStyle = `rgba(255,244,220,${0.16 * (1 - q / 0.12)})`; ctx.fillRect(0, 0, W, H); }
       const ca = q < 0.72 ? 1 : (1 - q) / 0.28;
       ctx.beginPath();
       ctx.ellipse(sx, sy, R * 0.46, R * 0.33, 0, 0, TAU);
@@ -453,37 +460,37 @@
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       ctx.strokeStyle = `rgba(30,18,10,${0.8 * ca})`;
       ctx.lineWidth = Math.max(1.2, 1.8 * z);
-      strokeCracks(ctx, f.cracks, sx, sy, R * 1.6, easeOut(q * 4));
+      strokeCracks(ctx, f.cracks, sx, sy, R * 1.3, easeOut(q * 4));
       const fb = clamp(q * 2.4, 0, 1);
       if (fb < 1) glow(ctx, sx, sy, R * (0.4 + 1.1 * easeOut(fb)), [[0, `rgba(255,252,236,${(1 - fb)})`], [0.35, `rgba(255,176,70,${(1 - fb) * 0.85})`], [0.75, `rgba(220,80,26,${(1 - fb) * 0.4})`], [1, 'rgba(220,80,26,0)']]);
       const s1 = clamp(q * 1.9, 0, 1);
-      if (s1 < 1) ring(ctx, sx, sy, R * 2.6 * easeOut(s1), `rgba(255,232,196,${(1 - s1) * 0.85})`, Math.max(1.5, 4.5 * z * (1 - s1) + 1));
+      if (s1 < 1) ring(ctx, sx, sy, R * 1.9 * easeOut(s1), `rgba(255,232,196,${(1 - s1) * 0.85})`, Math.max(1.3, 3.2 * z * (1 - s1) + 1));
       const s2 = clamp(q * 1.35, 0, 1);
-      if (s2 < 1) ring(ctx, sx, sy, R * 1.7 * easeOut(s2), `rgba(126,96,66,${(1 - s2) * 0.5})`, 9 * z);
+      if (s2 < 1) ring(ctx, sx, sy, R * 1.35 * easeOut(s2), `rgba(126,96,66,${(1 - s2) * 0.5})`, 5.5 * z);
       for (const d of f.debris) {
         const u = clamp(q * 1.6, 0, 1);
         if (u >= 1) continue;
         const e = easeOut(u);
-        const px = sx + Math.cos(d.a) * R * d.v * 1.25 * e, py = sy + Math.sin(d.a) * R * d.v * e - Math.sin(u * Math.PI) * 26 * z * d.v + 20 * z * u * u;
-        disc(ctx, px, py, d.s * z * (1 - u * 0.4), d.hot ? `rgba(255,178,70,${1 - u})` : `rgba(64,44,28,${1 - u})`);
+        const px = sx + Math.cos(d.a) * R * d.v * 1.25 * e, py = sy + Math.sin(d.a) * R * d.v * e - Math.sin(u * Math.PI) * 16 * z * d.v + 12 * z * u * u;
+        disc(ctx, px, py, Math.max(1, d.s * 0.7 * z * (1 - u * 0.4)), d.hot ? `rgba(255,178,70,${1 - u})` : `rgba(64,44,28,${1 - u})`);
       }
       for (const p of f.smoke) {
         const px = sx + p.ox * R * (0.3 + q), py = sy - q * R * (1 + p.sp * 1.4);
-        disc(ctx, px, py, (6 + p.s * 8) * z * (0.6 + q * 1.5), `rgba(60,52,46,${0.34 * Math.min(1, q * 5) * (1 - q)})`);
+        disc(ctx, px, py, (4 + p.s * 5) * z * (0.6 + q * 1.5), `rgba(60,52,46,${0.34 * Math.min(1, q * 5) * (1 - q)})`);
       }
     },
 
     // 번개: 하늘에서 내리꽂히는 줄기가 두 번 번쩍인다
     lightning(ctx, f, k, sx, sy, z, t, cam, W, H) {
       const ms = k * f.dur;
-      const span = clamp(H * 0.55, 170, 520), wide = span * 0.5;
+      const span = clamp(H * 0.36, 120, 330) * SCALE, wide = span * 0.5; // 줄기의 길이: 화면 높이의 3분의 1쯤
       // 번쩍(0~110ms) – 어둠 – 번쩍(170~300ms) – 어둠 – 마지막 번쩍(360ms~)이 서서히 사라진다
       const which = ms < 150 ? 0 : ms < 340 ? 1 : 2;
       const power = ms < 110 ? 1 : ms < 170 ? 0.12 : ms < 300 ? 1 : ms < 360 ? 0.12 : Math.max(0, 1 - (ms - 360) / 380);
-      if (!calm.matches && (ms < 90 || (ms > 170 && ms < 250))) { ctx.fillStyle = 'rgba(214,230,255,.15)'; ctx.fillRect(0, 0, W, H); }
+      if (!calm.matches && (ms < 90 || (ms > 170 && ms < 250))) { ctx.fillStyle = 'rgba(214,230,255,.09)'; ctx.fillRect(0, 0, W, H); }
       const sa = 1 - k;
       ctx.beginPath();
-      ctx.ellipse(sx, sy, 9 * z, 6 * z, 0, 0, TAU);
+      ctx.ellipse(sx, sy, 6.5 * z, 4.4 * z, 0, 0, TAU);
       ctx.fillStyle = `rgba(24,16,12,${0.55 * sa})`;
       ctx.fill();
       if (power > 0.02) {
@@ -494,19 +501,19 @@
         };
         ctx.lineCap = 'round'; ctx.lineJoin = 'round';
         ctx.shadowColor = 'rgba(130,180,255,.95)';
-        ctx.shadowBlur = 26;
-        ctx.strokeStyle = `rgba(150,194,255,${power * 0.85})`;
-        ctx.lineWidth = Math.max(5, 7 * z);
+        ctx.shadowBlur = 18;
+        ctx.strokeStyle = `rgba(150,194,255,${power * 0.9})`;
+        ctx.lineWidth = Math.max(4.2, 5 * z);
         path(b.main); ctx.stroke();
-        ctx.lineWidth = Math.max(2.4, 3.2 * z);
+        ctx.lineWidth = Math.max(2, 2.4 * z);
         for (const fk of b.forks) { path(fk); ctx.stroke(); }
         ctx.shadowBlur = 0;
         ctx.strokeStyle = `rgba(255,255,255,${power})`;
-        ctx.lineWidth = Math.max(2.2, 3 * z);
+        ctx.lineWidth = Math.max(2, 2.4 * z);
         path(b.main); ctx.stroke();
-        ctx.lineWidth = Math.max(1, 1.3 * z);
+        ctx.lineWidth = Math.max(0.9, 1 * z);
         for (const fk of b.forks) { path(fk); ctx.stroke(); }
-        glow(ctx, sx, sy, 46 * z, [[0, `rgba(255,255,255,${power})`], [0.25, `rgba(180,214,255,${power * 0.8})`], [1, 'rgba(170,208,255,0)']]);
+        glow(ctx, sx, sy, 26 * z, [[0, `rgba(255,255,255,${power})`], [0.25, `rgba(180,214,255,${power * 0.8})`], [1, 'rgba(170,208,255,0)']]);
       }
       const u = clamp(ms / 520, 0, 1);
       if (u < 1) {
@@ -515,7 +522,7 @@
         ctx.lineCap = 'round';
         ctx.beginPath();
         for (const s of f.sparks) {
-          const r1 = 8 * z + 26 * z * s.l * easeOut(u), r0 = r1 - 9 * z * (1 - u);
+          const r1 = 5 * z + 15 * z * s.l * easeOut(u), r0 = r1 - 6 * z * (1 - u);
           ctx.moveTo(sx + Math.cos(s.a) * r0, sy + Math.sin(s.a) * r0 * 0.8);
           ctx.lineTo(sx + Math.cos(s.a) * r1, sy + Math.sin(s.a) * r1 * 0.8);
         }
@@ -526,15 +533,15 @@
     // 축복: 금빛 기둥과 솟아오르는 반짝임. opts.label이 있으면 글자도 띄운다.
     bless(ctx, f, k, sx, sy, z, t) {
       const a = Math.sin(clamp(k, 0, 1) * Math.PI);
-      const h = 170 * z;
+      const h = 115 * z;
       ctx.save(); // 세로로 길게 늘인 둥근 빛 = 가장자리로 갈수록 옅어지는 빛줄기 (땅 바로 아래에서 사라진다)
       ctx.translate(sx, sy - h * 0.44);
       ctx.scale(0.24, 1);
       ctx.globalCompositeOperation = 'lighter';
       glow(ctx, 0, 0, h * 0.52, [[0, `rgba(255,236,160,${0.58 * a})`], [0.5, `rgba(255,224,130,${0.3 * a})`], [1, 'rgba(255,224,130,0)']]);
       ctx.restore();
-      glow(ctx, sx, sy, 26 * z, [[0, `rgba(255,246,204,${0.75 * a})`], [1, 'rgba(255,236,160,0)']]);
-      const rr = 30 * z * easeOut(k);
+      glow(ctx, sx, sy, 18 * z, [[0, `rgba(255,246,204,${0.75 * a})`], [1, 'rgba(255,236,160,0)']]);
+      const rr = 21 * z * easeOut(k);
       ctx.beginPath();
       ctx.ellipse(sx, sy, rr, rr * 0.45, 0, 0, TAU);
       ctx.strokeStyle = `rgba(255,230,160,${(1 - k) * 0.95})`;
@@ -545,12 +552,12 @@
         ctx.fillStyle = `rgba(255,246,204,${1 - k})`;
         star(ctx, x, y, s.s * z);
       }
-      label(ctx, tr(f.label || ''), sx, sy - 40 * z - k * 26 * z, '#c9f7b4', k < 0.75 ? 1 : (1 - k) / 0.25, z);
+      label(ctx, tr(f.label || ''), sx, sy - 30 * z - k * 20 * z, '#c9f7b4', k < 0.75 ? 1 : (1 - k) / 0.25, z);
     },
 
     // 저주: 붉은 고리가 조여들고 파편이 쏟아진다
     curse(ctx, f, k, sx, sy, z) {
-      const r = 34 * z * (1 - easeOut(k) * 0.75);
+      const r = 24 * z * (1 - easeOut(k) * 0.75);
       disc(ctx, sx, sy, r, `rgba(70,12,30,${0.3 * (1 - k)})`);
       ring(ctx, sx, sy, r, `rgba(214,70,78,${1 - k})`, Math.max(1.5, 3 * z));
       for (const s of f.sp) {
@@ -563,7 +570,7 @@
         ctx.closePath();
         ctx.fill();
       }
-      label(ctx, tr(f.label || ''), sx, sy - 40 * z - k * 26 * z, '#ffb7a6', k < 0.75 ? 1 : (1 - k) / 0.25, z);
+      label(ctx, tr(f.label || ''), sx, sy - 30 * z - k * 20 * z, '#ffb7a6', k < 0.75 ? 1 : (1 - k) / 0.25, z);
     },
 
     // 외교: 두 나라를 잇는 선. opts = { x2, y2, tone }
@@ -610,14 +617,15 @@
     // 국가 생성: 금빛 햇살이 퍼진다
     spawn(ctx, f, k, sx, sy, z) {
       const e = easeOut(k);
-      glow(ctx, sx, sy, 46 * z * (0.4 + e), [[0, `rgba(255,236,170,${(1 - k) * 0.7})`], [1, 'rgba(255,236,170,0)']]);
-      ring(ctx, sx, sy, 44 * z * e, `rgba(255,226,150,${(1 - k) * 0.9})`, Math.max(1.5, 3 * z * (1 - k) + 1));
+      const R = RADIUS.spawn * z;
+      glow(ctx, sx, sy, R * 1.05 * (0.4 + e), [[0, `rgba(255,236,170,${(1 - k) * 0.7})`], [1, 'rgba(255,236,170,0)']]);
+      ring(ctx, sx, sy, R * e, `rgba(255,226,150,${(1 - k) * 0.9})`, Math.max(1.3, 2.2 * z * (1 - k) + 1));
       ctx.strokeStyle = `rgba(255,240,196,${1 - k})`;
       ctx.lineWidth = Math.max(1.2, 2 * z);
       ctx.lineCap = 'round';
       ctx.beginPath();
       for (const r of f.rays) {
-        const r0 = (10 + 26 * e) * z, r1 = r0 + 14 * z * r.l * (1 - k * 0.5);
+        const r0 = R * (0.22 + 0.6 * e), r1 = r0 + R * 0.32 * r.l * (1 - k * 0.5);
         ctx.moveTo(sx + Math.cos(r.a) * r0, sy + Math.sin(r.a) * r0);
         ctx.lineTo(sx + Math.cos(r.a) * r1, sy + Math.sin(r.a) * r1);
       }
@@ -626,7 +634,7 @@
 
     // 국가 붕괴: 금이 가며 안으로 무너진다
     collapse(ctx, f, k, sx, sy, z) {
-      const R = 52 * z, a = k < 0.6 ? 1 : (1 - k) / 0.4;
+      const R = RADIUS.collapse * z, a = k < 0.6 ? 1 : (1 - k) / 0.4;
       for (let i = 0; i < 3; i++) {
         const kk = clamp(k * 1.5 - i * 0.16, 0, 1);
         if (kk <= 0 || kk >= 1) continue;

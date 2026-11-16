@@ -2819,6 +2819,16 @@
     }
   }
 
+  // 재해가 미치는 범위(지도 칸): city = 도시가 무너지는 반지름, dots = 군대가 휩쓸리는 반지름.
+  // 범위를 바꾸려면 여기와 함께 조준 원(POWER_RADIUS)과 연출 크기(fx.js의 RADIUS)도 비슷하게 맞춘다.
+  const BLAST = {
+    quake: { city: 32, dots: 30 },
+    storm: { city: 32, dots: 38 },
+    volcano: { city: 26, dots: 24 },
+    meteor: { city: 24, core: 11, dots: 24 }, // core: 한 단계 더 무너지는 한가운데
+    lightning: { city: 7, dots: 9 }
+  };
+
   // at({x, y})을 주면 그 자리에서 일어난다 (신의 권능으로 지도를 직접 눌렀을 때). 없으면 그 나라의 아무 구역.
   // quiet: 연출은 이미 띄웠으니 다시 띄우지 않는다 (운석은 떨어지는 모습이 먼저 나오고, 땅에 닿을 때 피해를 준다)
   function disaster(kind, n, at, quiet) {
@@ -2834,14 +2844,14 @@
     };
     if (kind === 'quake') {
       hurt(rand(0.03, 0.12), irand(30, 120), irand(3, 9));
-      damageCities(n, x, y, 45, 0.6);
-      killDotsNear(x, y, 40, 2);
+      damageCities(n, x, y, BLAST.quake.city, 0.6);
+      killDotsNear(x, y, BLAST.quake.dots, 2);
       logEvent(`${n.name}에 규모 ${rand(6, 8.8).toFixed(1)}의 지진이 발생했다. 도시가 무너지고 많은 사람이 숨졌다.`, 'bad');
     } else if (kind === 'storm') {
       hurt(rand(0.01, 0.05), irand(20, 90), irand(2, 6));
       n.army = Math.max(1, n.army * 0.96);
-      damageCities(n, x, y, 40, 0.25);
-      killDotsNear(x, y, 60, 3);
+      damageCities(n, x, y, BLAST.storm.city, 0.25);
+      killDotsNear(x, y, BLAST.storm.dots, 3);
       logEvent(`${n.name}에 거대한 태풍이 몰아쳤다. 농작물과 항구가 큰 피해를 입었다.`, 'bad');
     } else if (kind === 'flood') {
       hurt(rand(0.02, 0.07), irand(25, 90), irand(2, 7));
@@ -2852,20 +2862,20 @@
       logEvent(`${n.name}에 오랜 가뭄이 이어져 식량난이 닥쳤다.`, 'bad');
     } else if (kind === 'volcano') {
       hurt(rand(0.03, 0.1), irand(30, 100), irand(4, 10));
-      damageCities(n, x, y, 35, 0.5);
-      killDotsNear(x, y, 30, 2);
+      damageCities(n, x, y, BLAST.volcano.city, 0.5);
+      killDotsNear(x, y, BLAST.volcano.dots, 2);
       logEvent(`${n.name}의 화산이 폭발해 잿빛 재가 하늘을 덮었다.`, 'bad');
     } else if (kind === 'meteor') { // 좁은 범위를 아주 세게 때린다
       hurt(rand(0.06, 0.16), irand(60, 200), irand(6, 14));
       n.army = Math.max(1, n.army * 0.94);
-      damageCities(n, x, y, 34, 0.9);
-      damageCities(n, x, y, 16, 0.7); // 떨어진 자리 바로 곁의 도시는 한 단계 더 무너진다
-      killDotsNear(x, y, 34, 6);
+      damageCities(n, x, y, BLAST.meteor.city, 0.9);
+      damageCities(n, x, y, BLAST.meteor.core, 0.7); // 떨어진 자리 바로 곁의 도시는 한 단계 더 무너진다
+      killDotsNear(x, y, BLAST.meteor.dots, 6);
       logEvent(`${n.name}에 운석이 떨어졌다. 떨어진 자리 일대가 잿더미가 됐다.`, 'bad');
     } else if (kind === 'lightning') { // 한 점만 정확히 때린다: 그 자리의 군대와 도시
       hurt(rand(0.003, 0.012), irand(5, 25), irand(0, 2));
-      damageCities(n, x, y, 7, 0.6);
-      killDotsNear(x, y, 9, 2);
+      damageCities(n, x, y, BLAST.lightning.city, 0.6);
+      killDotsNear(x, y, BLAST.lightning.dots, 2);
       logEvent(`${n.name}에 벼락이 떨어졌다.`, 'bad');
     } else return;
     if (!quiet) fxAdd(kind, x, y);
@@ -3842,8 +3852,8 @@
   const POWER_LABEL = { popUp: '인구 +10%', popDown: '인구 -10%', armyUp: '군대 +10%', armyDown: '군대 -10%', goldUp: '골드 +20%', goldDown: '골드 -20%', techUp: '기술 +10', techDown: '기술 -10' };
   // 두 나라를 차례로 눌러 쓰는 외교 권능 (첫 번째로 누른 나라가 '하는 쪽')
   const POWER_PAIR = { dipWar: 1, dipPeace: 1, dipAlly: 1, dipColonize: 1 };
-  // 조준 원의 반지름(지도 칸). 실제로 피해가 미치는 범위와 같게 둔다.
-  const POWER_RADIUS = { quake: 45, storm: 60, flood: 40, drought: 40, volcano: 35, meteor: 34, lightning: 9 };
+  // 조준 원의 반지름(지도 칸). 실제로 피해가 미치는 범위(BLAST)와 같게 둔다. 홍수 · 가뭄은 나라 전체에 영향을 주므로 연출 크기만 따른다.
+  const POWER_RADIUS = { quake: 32, storm: 38, flood: 32, drought: 30, volcano: 26, meteor: 24, lightning: 9 };
 
   let powerPick = -1;                 // 외교 권능에서 먼저 고른 나라 (-1이면 아직 없음)
   let pickPath = null, pickPathAt = 0;
