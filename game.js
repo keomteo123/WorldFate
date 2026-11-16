@@ -2111,6 +2111,7 @@
       selected = id;
       computeSelectionBorder();
       updateUI();
+      window.dispatchEvent(new CustomEvent('wf:select')); // 모바일: 선택하면 국가 패널을 연다 (mobile-ui.js)
     }
   }
 

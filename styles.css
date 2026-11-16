@@ -214,65 +214,6 @@ input[type="checkbox"], input[type="radio"] { width: auto; padding: 0; }
 #modalBox h3 { margin: 0 0 2px; font-size: 13px; color: var(--gold-bright); text-align: center; }
 .closeRow { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
 
-/* ==========================================================================
-   📱 모바일 & PC 겸용 하이브리드 반응형 레이아웃 (여기서부터 끝까지 교체)
-   ========================================================================== */
-
-/* 스마트폰 및 브라우저 창 너비가 900px 이하로 줄어들 때 작동 */
-@media (max-width: 900px) {
-  /* 상단 제어 바: 버튼들이 찌그러지지 않고 모바일에서 가로 스크롤로 넘어가도록 설정 */
-  #top {
-    left: 8px; right: 8px; top: 8px;
-    padding: 6px 10px; gap: 5px;
-    overflow-x: auto; 
-    white-space: nowrap;
-    -webkit-overflow-scrolling: touch;
-  }
-  #top button { flex-shrink: 0; } /* 버튼 크기 축소 방지 */
-  .logo { margin-right: 8px; font-size: 16px; }
-
-  /* 좌우 사이드바를 스마트폰 화면에 맞춰 하단 서랍식 패널(Bottom Sheet)로 일괄 강제 변경 */
-  #left, #right {
-    position: fixed;
-    top: auto;
-    bottom: 0;
-    width: 100% !important;
-    height: 38vh; /* 화면 아래쪽 38% 영역을 차지 */
-    z-index: 15;
-    border-radius: 12px 12px 0 0;
-    border: 1px solid rgba(176, 181, 165, .25);
-    border-top: 2px solid var(--gold);
-    box-shadow: 0 -8px 32px rgba(0,0,0,0.6);
-    overflow-y: auto;
-    padding: 14px;
-  }
-
-  /* 서랍장 위치 정렬 및 기능이 많은 우측 창(신의 개입)은 조금 더 넓게 설정 */
-  #left { left: 0; right: 0; }
-  #right { left: 0; right: 0; height: 42vh; } 
-
-  /* 신의 개입 버튼 목록을 터치하기 쉽게 3열 배치로 변경 */
-  .actionGrid {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 5px;
-  }
-  .actionGrid button {
-    padding: 6px 4px; 
-    font-size: 10px; 
-    min-height: 28px;
-  }
-  
-  /* 모바일 화면에서 불필요한 도움말 및 스탯 글자 숨김/정리 */
-  #help { display: none !important; }
-  #stats { display: inline-block; font-size: 11px; margin-left: 5px; }
-
-  /* 모바일 모달 창 크기 조절 */
-  #modalBox {
-    width: 95%;
-    padding: 15px;
-  }
-}
-
 /* 마우스 및 그래픽 오버레이 레이어 (기존 유지) */
 #mapOverlay {
   background: transparent;
@@ -448,36 +389,192 @@ button:disabled { opacity: .4; cursor: default; transform: none; }
 #slotList { max-height: calc(52vh / var(--ui)); }
 #modalBox { max-width: calc(94vw / var(--ui)); }
 
-/* 휴대폰 · 좁은 창: 글자와 버튼을 손가락에 맞게 키운다 */
+
+/* ==========================================================================
+   모바일 레이아웃 (900px 이하: 휴대폰 · 태블릿 세로 · 좁은 창)
+   - 상단 바: 자주 쓰는 것만 남긴다. 새 게임 · 저장 · 불러오기는 ☰ 메뉴 안에 있다.
+   - 좌우 패널: 평소엔 숨기고 아래 탭(#mobTabs)으로 하나씩 연다. 지도를 가리지 않는다. (mobile-ui.js)
+   - 600px 이하(휴대폰 세로)는 상단 바를 두 줄로, 세로가 짧은 가로 화면은 패널을 옆 서랍으로.
+   ========================================================================== */
+#mobTabs { display: none; }
+@keyframes mpUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
 @media (max-width: 900px) {
-  .panel { font-size: 12px; }
+  /* --- 상단 바 --- */
+  #top {
+    left: calc(6px + env(safe-area-inset-left, 0px));
+    right: calc(6px + env(safe-area-inset-right, 0px));
+    top: calc(6px + env(safe-area-inset-top, 0px));
+    padding: 5px 6px; gap: 4px;
+    overflow-x: auto; white-space: nowrap; scrollbar-width: none;
+  }
+  #top::-webkit-scrollbar { display: none; }
+  #top .logo-area, #newWorld, #save, #load { display: none; }
+  #top button { flex-shrink: 0; min-height: 40px; padding: 6px 11px; font-size: 12px; }
+  #top .speed { min-width: 40px; }
+  #year { min-width: 0; padding: 0 6px; font-size: 15px; white-space: nowrap; }
+  #stats { font-size: 11px; padding-right: 4px; }
+  #help { display: none !important; }
+
+  /* --- 아래 탭 --- */
+  #mobTabs {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 16;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: linear-gradient(180deg, rgba(52, 37, 22, .97), rgba(22, 14, 8, .97));
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -6px 20px rgba(0, 0, 0, .45);
+  }
+  #mobTabs button {
+    flex: 1 1 0; min-width: 0; min-height: 46px; padding: 6px 8px;
+    font-size: 13px; letter-spacing: 1px;
+    background: none; border: 0; border-radius: 0; box-shadow: none;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #mobTabs button + button { border-left: 1px solid var(--line); }
+  #mobTabs button.active { color: var(--gold-bright); background: rgba(144, 112, 53, .3); box-shadow: inset 0 2px var(--gold); }
+
+  /* --- 좌우 패널 → 아래 서랍 (탭을 눌러야 열림) --- */
+  #left, #right {
+    display: none; position: fixed;
+    top: auto; left: 0; right: 0; bottom: calc(46px + env(safe-area-inset-bottom, 0px));
+    width: auto; height: auto; max-height: min(50dvh, 440px);
+    z-index: 15; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    padding: 12px 14px 14px;
+    padding-left: calc(14px + env(safe-area-inset-left, 0px));
+    padding-right: calc(14px + env(safe-area-inset-right, 0px));
+    border-radius: 12px 12px 0 0; border-top: 2px solid var(--gold);
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, .6);
+    font-size: 12px;
+  }
+  body.mp-left #left, body.mp-right #right { display: block; animation: mpUp .16s ease-out; }
   .panel h3 { font-size: 13px; }
-  .panel h4 { font-size: 11px; }
-  .log { font-size: 11.5px; }
-  #top button { min-height: 36px; padding: 6px 11px; font-size: 12px; }
-  .actionGrid button { min-height: 36px; font-size: 11px; }
-  .dlgBtns button { min-height: 40px; }
-  .setRow, .saveName, .optRow label { font-size: 13px; }
+  .panel h4 { font-size: 11px; margin-top: 12px; }
+  .legend { font-size: 11px; }
+  .small { font-size: 11px; }
+  .log { font-size: 12px; padding: 6px 8px; }
+  .stat { padding: 4px 0; }
+  .actionGrid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .actionGrid button { min-height: 40px; padding: 6px 4px; font-size: 12px; }
+  .panel select, .panel input, #renameBtn { min-height: 40px; margin-bottom: 6px; }
+  #nationName { font-size: 15px; }
+
+  /* --- 알림은 위쪽에 (아래는 탭과 서랍 자리) --- */
+  #toast {
+    top: calc(64px + env(safe-area-inset-top, 0px)); bottom: auto;
+    max-width: 88vw; text-align: center; transform: translateX(-50%) translateY(-10px);
+  }
+  #toast.show { transform: translateX(-50%); }
+
+  /* --- 홈 화면 · 대화상자 --- */
+  .screen, .dialog { padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+  .homeCard { padding: 16px 12px; max-height: 100dvh; overflow-y: auto; }
+  .homeSub { letter-spacing: 4px; font-size: 12px; }
   .homeMenu { width: min(300px, 86vw); }
   .homeMenu button { padding: 13px 14px; }
+  .homeFoot { font-size: 11px; line-height: 2; }
+  .dlgBox { max-height: calc(90dvh / var(--ui)); padding: 14px; overscroll-behavior: contain; }
+  .dlgBtns button { min-height: 42px; }
+  .setRow, .saveName, .optRow label { font-size: 13px; }
+  .setRow { min-height: 40px; margin: 6px 0; }
+  .setRow input[type="checkbox"] { width: 22px; height: 22px; }
+  .tmConsent input { width: 20px; height: 20px; }
+  .tmConsent label { padding: 4px 0; }
+  .tmLang button, .seedBox button { min-height: 38px; padding: 6px 14px; }
+  .slot .btns button { min-height: 34px; padding: 6px 12px; }
   .helpList { font-size: 13px; }
   .tmBody { font-size: 13px; }
-  #left, #right { height: 38dvh; padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
-  #right { height: 42dvh; }
+  #mapGrid { grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); max-height: 46dvh; }
+  #slotList { max-height: 50dvh; }
+  #modalBox { width: min(340px, 92vw); padding: 15px; gap: 9px; }
+  #modalBox input, #modalBox select, #modalBox button { min-height: 42px; }
+  .closeRow button { flex: 1; }
+  /* 화면 키보드가 올라와도 가려지지 않게 위쪽에 둔다 */
+  #modal { align-items: flex-start; padding-top: calc(12dvh + env(safe-area-inset-top, 0px)); }
 }
-/* 터치 기기: 입력칸을 누를 때 브라우저가 화면을 확대하지 않도록 16px 이상 */
-@media (pointer: coarse) {
-  input, select, textarea { font-size: 16px; }
-  .optRow input[type="range"], .setRow input[type="range"] { min-height: 28px; }
+
+/* 휴대폰 세로: 상단 바를 두 줄로 (윗줄: 메뉴 · 연도 · 현황 · 소리 / 아랫줄: 일시정지 · 속도 · 국가 생성) */
+@media (max-width: 600px) {
+  #top { flex-wrap: wrap; overflow: visible; row-gap: 2px; }
+  #top::before { content: ""; order: 5; flex: 0 0 100%; height: 0; }
+  #top .spacer { display: none; }
+  #homeBtn { order: 1; } #year { order: 2; } #stats { order: 3; } #soundBtn { order: 4; }
+  #pause { order: 6; } #top .speed { order: 7; } #addNation { order: 8; }
+  #year { font-size: 16px; padding: 0 8px; }
+  #stats { flex: 1 1 0; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+  #pause { flex: 0 0 42px; padding: 6px 0; }
+  #top .speed { flex: 1 1 0; min-width: 0; padding: 6px 2px; }
+  #addNation { flex: 0 1 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+  #toast { top: calc(108px + env(safe-area-inset-top, 0px)); }
 }
-/* 휴대폰을 가로로 눕힌 경우: 세로가 짧으니 아래 서랍 대신 좌우로 나눠 지도를 가리지 않게 */
+
+/* 휴대폰 가로(세로가 짧음): 패널을 좌우 서랍으로, 탭은 양쪽 구석의 작은 버튼으로 */
+@media (min-width: 601px) and (max-width: 900px) and (max-height: 520px) {
+  #mobTabs {
+    justify-content: space-between; pointer-events: none;
+    padding: 0 calc(6px + env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) calc(6px + env(safe-area-inset-left, 0px));
+    background: none; border: 0; box-shadow: none;
+  }
+  #mobTabs button {
+    flex: 0 1 auto; pointer-events: auto; min-height: 36px; padding: 6px 16px;
+    background: linear-gradient(180deg, rgba(52, 37, 22, .96), rgba(22, 14, 8, .96));
+    border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 4px 14px rgba(0, 0, 0, .5);
+  }
+  #mobTabs button + button { border-left: 1px solid var(--line); }
+  #mobTabs button.active { background: linear-gradient(180deg, #907035, #5d431d); border-color: var(--gold-bright); box-shadow: 0 4px 14px rgba(0, 0, 0, .5); }
+  #left, #right {
+    top: calc(64px + env(safe-area-inset-top, 0px)); bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+    width: min(46vw, 340px); max-height: none; padding: 10px 12px;
+    border-radius: 8px; border-top-width: 1px; box-shadow: 0 10px 30px rgba(0, 0, 0, .6);
+  }
+  #left { left: calc(6px + env(safe-area-inset-left, 0px)); right: auto; }
+  #right { right: calc(6px + env(safe-area-inset-right, 0px)); left: auto; }
+  .actionGrid { grid-template-columns: 1fr 1fr; }
+}
+/* 세로가 짧은 화면(가로로 눕힌 휴대폰)의 홈 화면 · 대화상자 */
 @media (max-width: 900px) and (max-height: 520px) {
-  #left, #right { width: 46% !important; height: 62dvh; top: auto; bottom: 0; border-radius: 12px 12px 0 0; }
-  #left { left: 0; right: auto; }
-  #right { left: auto; right: 0; height: 62dvh; }
   .homeTitle { font-size: 34px; }
-  .homeSub { margin-bottom: 12px; }
-  .homeMenu { gap: 6px; }
-  .homeMenu button { padding: 8px 12px; }
-  .dlgBox { max-height: calc(94dvh / var(--ui)); }
+  .homeSub { margin-bottom: 10px; }
+  .homeMenu { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: min(460px, 90vw); }
+  .homeMenu button { padding: 9px 12px; font-size: 14px; }
+  .homeHint { margin-top: 6px; min-height: 14px; }
+  .dlgBox { max-height: calc(96dvh / var(--ui)); padding: 10px 14px; }
+  .dlgSub { margin-bottom: 6px; }
+  .dlgBtns { margin-top: 8px; }
+  .optRow { margin-top: 8px; gap: 6px 22px; }
+  #newGame .dlgSub { display: none; }
+  #mapGrid { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); max-height: max(120px, calc(96dvh - 172px)); }
+  .mapCard .md { min-height: 0; }
+  #slotList { max-height: max(110px, calc(96dvh - 170px)); }
+  .tmBody { max-height: max(90px, calc(96dvh - 200px)); min-height: 90px; }
+}
+
+/* 상단 바 글자가 두 줄로 꺾이지 않게 (좁으면 버튼이 찌그러지는 대신 옆으로 밀린다) */
+#top button, #top .logo-area, #year, #stats { flex-shrink: 0; white-space: nowrap; }
+
+#top { overflow-x: auto; scrollbar-width: none; }
+#top::-webkit-scrollbar { display: none; }
+
+/* 태블릿 가로(터치 + 데스크톱 배치): ui-scale.js가 UI를 키우므로 상단 바의 로고는 숨겨 자리를 번다 */
+@media (pointer: coarse) and (min-width: 901px) {
+  #top .logo-area { display: none; }
+  #help { display: none; }
+  #top button { min-height: 32px; padding: 4px 11px; }
+  .actionGrid button { min-height: 30px; }
+}
+
+/* 터치 기기 */
+@media (pointer: coarse) {
+  /* 입력칸을 누를 때 브라우저가 화면을 확대하지 않도록 16px 이상 */
+  input, select, textarea { font-size: calc(16px / var(--ui)); }
+  .optRow input[type="range"], .setRow input[type="range"] { min-height: 32px; }
+  button, a, label, .mapCard { -webkit-tap-highlight-color: transparent; }
+}
+/* 마우스가 없는 기기: 누른 뒤에도 hover 모양이 남는 것을 막고, 누르는 순간만 밝게 */
+@media (hover: none) {
+  button:hover { transform: none; }
+  button:hover:not(.active):not(.primary):not(:disabled) { color: var(--ink); background: linear-gradient(180deg, #44331f, #2a1d11); border-color: rgba(206, 178, 120, .32); }
+  #mobTabs button:hover:not(.active) { background: none; border-color: transparent; }
+  button.primary:hover { background: linear-gradient(180deg, #907035, #5d431d); }
+  button:active:not(:disabled) { filter: brightness(1.3); }
+  .mapCard:hover { transform: none; }
 }
