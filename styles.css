@@ -391,14 +391,120 @@ button:disabled { opacity: .4; cursor: default; transform: none; }
 
 
 /* ==========================================================================
-   모바일 레이아웃 (900px 이하: 휴대폰 · 태블릿 세로 · 좁은 창)
-   - 상단 바: 자주 쓰는 것만 남긴다. 새 게임 · 저장 · 불러오기는 ☰ 메뉴 안에 있다.
-   - 좌우 패널: 평소엔 숨기고 아래 탭(#mobTabs)으로 하나씩 연다. 지도를 가리지 않는다. (mobile-ui.js)
-   - 600px 이하(휴대폰 세로)는 상단 바를 두 줄로, 세로가 짧은 가로 화면은 패널을 옆 서랍으로.
+   신의 권능 도구 막대 (#dock, powers.js)
+   아래 가운데의 탭(살펴보기 · 재해 · 축복 · 저주 · 운명)을 누르면 그 위에 권능 칸이 열린다.
+   권능을 고른 뒤 지도를 누르면 국가를 선택하지 않아도 그 자리에 발동한다.
    ========================================================================== */
-#mobTabs { display: none; }
+#help { display: none; }
+canvas.power { cursor: crosshair; }
+#dock {
+  position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+  z-index: 9; zoom: var(--ui);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  max-width: calc(100vw / var(--ui) - 420px);
+  pointer-events: none;
+}
+#dock > * { pointer-events: auto; }
+#dockTabs, #dockTray {
+  display: flex; gap: 4px; padding: 5px;
+  background: linear-gradient(180deg, rgba(58, 42, 25, .97), rgba(20, 13, 8, .97));
+  border: 1px solid var(--line); border-top-color: rgba(255, 229, 159, .55);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .55), inset 0 1px rgba(255, 255, 255, .1);
+  backdrop-filter: blur(14px);
+}
+#dock button { transform: none; }
+.dkTab, .dkTool {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  padding: 3px 4px; line-height: 1.15;
+  color: var(--muted); font-size: 10px; letter-spacing: .3px;
+  white-space: normal; text-align: center;
+}
+.dkTab i, .dkTool i { font-style: normal; font-size: 20px; line-height: 1.1; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .55)); }
+.dkTab span, .dkTool span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+.dkTab { width: 62px; height: 48px; background: none; border: 1px solid transparent; border-radius: 9px; box-shadow: none; }
+.dkTab span { white-space: nowrap; }
+.dkTab:hover { color: var(--ink); background: rgba(255, 227, 160, .08); border-color: transparent; }
+.dkTab.active {
+  color: var(--gold-bright);
+  background: linear-gradient(180deg, rgba(160, 124, 58, .6), rgba(93, 67, 29, .55));
+  border-color: rgba(255, 227, 160, .6);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .2), 0 0 14px rgba(230, 197, 109, .2);
+}
+.dkTab.armed::after { /* 이 분류의 권능이 켜져 있음 */
+  content: ""; position: absolute; top: 4px; right: 6px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--gold-bright); box-shadow: 0 0 8px var(--gold-bright);
+}
+.dkPanel { display: none; }
+
+#dockTray { display: none; gap: 5px; padding: 6px; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+#dockTray::-webkit-scrollbar { display: none; }
+#dockTray.open { display: flex; animation: mpUp .14s ease-out; }
+.dkTool {
+  flex: 0 0 70px; height: 62px; color: var(--ink);
+  background: linear-gradient(180deg, #3d2d1b, #24180e);
+  border: 1px solid rgba(206, 178, 120, .3); border-radius: 9px;
+}
+.dkTool i { font-size: 23px; }
+.dkTool:hover { background: linear-gradient(180deg, #54402a, #2f2114); border-color: rgba(242, 211, 125, .65); }
+.dkTool.armed {
+  color: #fff3c4;
+  background: linear-gradient(180deg, #a07c3a, #5d431d);
+  border-color: var(--gold-bright);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .25), 0 0 0 1px var(--gold-bright), 0 0 18px rgba(255, 220, 127, .35);
+}
+.dkTool[data-sign]::before { /* 축복(+) · 저주(−) 표시 */
+  content: attr(data-sign); position: absolute; top: 3px; right: 4px;
+  width: 15px; height: 15px; border-radius: 50%;
+  font: 900 12px/15px Georgia, serif; color: #fff; text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .6);
+}
+.dkTool[data-sign="+"]::before { background: #4f9a57; }
+.dkTool[data-sign="−"]::before { background: #b5483f; }
+
+#dockHint {
+  display: none; align-items: center; gap: 8px; padding: 4px 5px 4px 13px;
+  font-size: 11px; color: var(--muted); white-space: nowrap;
+  background: rgba(20, 13, 8, .93); border: 1px solid var(--gold); border-radius: 16px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 16px rgba(230, 197, 109, .18);
+}
+#dockHint.open { display: flex; }
+#dockHint b { color: var(--gold-bright); font-size: 12px; }
+#dockHintClose { width: 22px; height: 22px; padding: 0; border-radius: 50%; font-size: 10px; line-height: 1; }
+
+/* 권능을 쓴 자리에 잠깐 뜨는 효과 */
+.pfx { position: fixed; z-index: 20; pointer-events: none; transform: translate(-50%, -50%); }
+.pfx i { display: block; font-style: normal; font-size: 34px; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .6)); animation: pfxPop .8s ease-out forwards; }
+.pfx::before {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  border: 2px solid var(--gold-bright); border-radius: 50%; animation: pfxRing .7s ease-out forwards;
+}
+.pfx.fail::before { display: none; }
+.pfx.fail span {
+  display: block; padding: 5px 12px; font-size: 12px; color: #ffd9d2; white-space: nowrap;
+  background: rgba(60, 16, 12, .93); border: 1px solid #b5483f; border-radius: 13px;
+  animation: pfxFail 1.3s ease-out forwards;
+}
+@keyframes pfxPop { 0% { transform: scale(.4); opacity: 0; } 25% { transform: scale(1.25); opacity: 1; } 60% { transform: scale(1) translateY(-6px); opacity: 1; } 100% { transform: scale(1) translateY(-30px); opacity: 0; } }
+@keyframes pfxRing { from { transform: scale(.5); opacity: 1; } to { transform: scale(4.2); opacity: 0; } }
+@keyframes pfxFail { 0% { transform: translateY(6px); opacity: 0; } 12% { transform: none; opacity: 1; } 75% { opacity: 1; } 100% { transform: translateY(-10px); opacity: 0; } }
 @keyframes mpUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 
+/* 권능은 도구 막대로 옮겼으므로, 국가 패널에는 이름 바꾸기만 남긴다 (버튼 자체는 game.js가 쓰므로 지우지 않고 숨긴다) */
+#godPanel .actionGrid, #godPanel h4:nth-of-type(2) { display: none; }
+
+/* 알림은 화면 위쪽에 (아래는 도구 막대 자리) */
+#toast { top: 62px; bottom: auto; transform: translateX(-50%) translateY(-10px); }
+#toast.show { transform: translateX(-50%); }
+
+/* ==========================================================================
+   모바일 레이아웃 (900px 이하: 휴대폰 · 태블릿 세로 · 좁은 창)
+   - 상단 바: 자주 쓰는 것만 남긴다. 새 게임 · 저장 · 불러오기는 ☰ 메뉴 안에 있다.
+   - 좌우 패널: 평소엔 숨기고 도구 막대 양 끝의 '시야' · '역사' 버튼으로 하나씩 연다. 지도를 가리지 않는다. (mobile-ui.js)
+   - 600px 이하(휴대폰 세로)는 상단 바를 두 줄로, 세로가 짧은 가로 화면은 패널을 옆 서랍으로.
+   ========================================================================== */
 @media (max-width: 900px) {
   /* --- 상단 바 --- */
   #top {
@@ -416,27 +522,26 @@ button:disabled { opacity: .4; cursor: default; transform: none; }
   #stats { font-size: 11px; padding-right: 4px; }
   #help { display: none !important; }
 
-  /* --- 아래 탭 --- */
-  #mobTabs {
-    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 16;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    background: linear-gradient(180deg, rgba(52, 37, 22, .97), rgba(22, 14, 8, .97));
-    border-top: 1px solid var(--line);
-    box-shadow: 0 -6px 20px rgba(0, 0, 0, .45);
+  /* --- 도구 막대: 화면 아래에 꽉 차게. 양 끝에 패널 버튼(시야 · 역사)이 나타난다 --- */
+  #dock { position: fixed; left: 0; right: 0; bottom: 0; transform: none; z-index: 16; max-width: none; gap: 0; align-items: stretch; }
+  #dockTabs {
+    gap: 0; padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    border-width: 1px 0 0; border-radius: 0; box-shadow: 0 -6px 20px rgba(0, 0, 0, .45);
   }
-  #mobTabs button {
-    flex: 1 1 0; min-width: 0; min-height: 46px; padding: 6px 8px;
-    font-size: 13px; letter-spacing: 1px;
-    background: none; border: 0; border-radius: 0; box-shadow: none;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  #mobTabs button + button { border-left: 1px solid var(--line); }
-  #mobTabs button.active { color: var(--gold-bright); background: rgba(144, 112, 53, .3); box-shadow: inset 0 2px var(--gold); }
+  .dkTab { flex: 1 1 0; min-width: 0; width: auto; height: 56px; border-radius: 0; border-width: 0; font-size: 10px; }
+  .dkTab i { font-size: 21px; }
+  .dkTab.active { box-shadow: inset 0 2px var(--gold); }
+  .dkPanel { display: flex; }
+  #dockTray { border-width: 1px 0 0; border-radius: 14px 14px 0 0; padding: 9px 10px; gap: 7px; justify-content: safe center; box-shadow: 0 -8px 26px rgba(0, 0, 0, .5); }
+  .dkTool { flex: 0 0 74px; height: 68px; font-size: 11px; }
+  .dkTool i { font-size: 25px; }
+  #dockHint { align-self: center; margin-bottom: 8px; font-size: 12px; padding: 5px 6px 5px 14px; }
+  #dockHintClose { width: 30px; height: 30px; font-size: 12px; }
 
   /* --- 좌우 패널 → 아래 서랍 (탭을 눌러야 열림) --- */
   #left, #right {
     display: none; position: fixed;
-    top: auto; left: 0; right: 0; bottom: calc(46px + env(safe-area-inset-bottom, 0px));
+    top: auto; left: 0; right: 0; bottom: calc(56px + env(safe-area-inset-bottom, 0px));
     width: auto; height: auto; max-height: min(50dvh, 440px);
     z-index: 15; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
     padding: 12px 14px 14px;
@@ -507,22 +612,19 @@ button:disabled { opacity: .4; cursor: default; transform: none; }
   #toast { top: calc(108px + env(safe-area-inset-top, 0px)); }
 }
 
-/* 휴대폰 가로(세로가 짧음): 패널을 좌우 서랍으로, 탭은 양쪽 구석의 작은 버튼으로 */
+/* 휴대폰 가로(세로가 짧음): 패널을 좌우 서랍으로, 도구 막대는 가운데 작게 */
 @media (min-width: 601px) and (max-width: 900px) and (max-height: 520px) {
-  #mobTabs {
-    justify-content: space-between; pointer-events: none;
-    padding: 0 calc(6px + env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) calc(6px + env(safe-area-inset-left, 0px));
-    background: none; border: 0; box-shadow: none;
-  }
-  #mobTabs button {
-    flex: 0 1 auto; pointer-events: auto; min-height: 36px; padding: 6px 16px;
-    background: linear-gradient(180deg, rgba(52, 37, 22, .96), rgba(22, 14, 8, .96));
-    border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 4px 14px rgba(0, 0, 0, .5);
-  }
-  #mobTabs button + button { border-left: 1px solid var(--line); }
-  #mobTabs button.active { background: linear-gradient(180deg, #907035, #5d431d); border-color: var(--gold-bright); box-shadow: 0 4px 14px rgba(0, 0, 0, .5); }
+  #dock { left: 50%; right: auto; bottom: calc(4px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); align-items: center; gap: 4px; max-width: 96vw; }
+  #dockTabs { padding: 3px; border-width: 1px; border-radius: 12px; }
+  .dkTab { flex: 0 0 58px; height: 46px; border-radius: 9px; }
+  .dkTab i { font-size: 19px; }
+  .dkTab.active { box-shadow: none; }
+  #dockTray { border-width: 1px; border-radius: 12px; padding: 5px; gap: 5px; }
+  .dkTool { flex: 0 0 68px; height: 56px; font-size: 10px; }
+  .dkTool i { font-size: 21px; }
+  #dockHint { margin-bottom: 0; }
   #left, #right {
-    top: calc(64px + env(safe-area-inset-top, 0px)); bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+    top: calc(64px + env(safe-area-inset-top, 0px)); bottom: calc(58px + env(safe-area-inset-bottom, 0px));
     width: min(46vw, 340px); max-height: none; padding: 10px 12px;
     border-radius: 8px; border-top-width: 1px; box-shadow: 0 10px 30px rgba(0, 0, 0, .6);
   }
@@ -573,7 +675,6 @@ button:disabled { opacity: .4; cursor: default; transform: none; }
 @media (hover: none) {
   button:hover { transform: none; }
   button:hover:not(.active):not(.primary):not(:disabled) { color: var(--ink); background: linear-gradient(180deg, #44331f, #2a1d11); border-color: rgba(206, 178, 120, .32); }
-  #mobTabs button:hover:not(.active) { background: none; border-color: transparent; }
   button.primary:hover { background: linear-gradient(180deg, #907035, #5d431d); }
   button:active:not(:disabled) { filter: brightness(1.3); }
   .mapCard:hover { transform: none; }

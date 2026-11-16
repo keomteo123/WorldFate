@@ -452,4 +452,25 @@
   );
   I.addNames('한국:KR,일본제국:JP');
   I.addRows(R.splice(R.length - 2, 2));
+  // ===== 신의 권능 도구 막대 (powers.js) =====
+  I.addRows([
+    ['시야', 'View', '视野', '視野', '視界', 'Обзор', 'Görüş', 'Vue', 'Sicht', 'Vista', 'Visão'],
+    ['살펴보기', 'Inspect', '查看', '查看', '調べる', 'Осмотр', 'İncele', 'Inspecter', 'Ansehen', 'Inspeccionar', 'Inspecionar'],
+    ['재해', 'Disasters', '灾害', '災害', '災害', 'Бедствия', 'Afetler', 'Fléaux', 'Unheil', 'Desastres', 'Desastres'],
+    ['축복', 'Bless', '祝福', '祝福', '祝福', 'Дары', 'Lütuf', 'Bénir', 'Segen', 'Bendecir', 'Bênçãos'],
+    ['저주', 'Curse', '诅咒', '詛咒', '呪い', 'Проклятия', 'Lanet', 'Maudire', 'Fluch', 'Maldecir', 'Maldições'],
+    ['운명', 'Fate', '命运', '命運', '運命', 'Судьба', 'Kader', 'Destin', 'Schicksal', 'Destino', 'Destino'],
+    ['역사', 'History', '历史', '歷史', '歴史', 'История', 'Tarih', 'Histoire', 'Chronik', 'Historia', 'História'],
+    ['지진', 'Earthquake', '地震', '地震', '地震', 'Землетрясение', 'Deprem', 'Séisme', 'Erdbeben', 'Terremoto', 'Terremoto'],
+    ['폭풍', 'Storm', '风暴', '風暴', '嵐', 'Буря', 'Fırtına', 'Tempête', 'Sturm', 'Tormenta', 'Tempestade'],
+    ['홍수', 'Flood', '洪水', '洪水', '洪水', 'Потоп', 'Sel', 'Inondation', 'Flut', 'Inundación', 'Inundação'],
+    ['가뭄', 'Drought', '干旱', '乾旱', '干ばつ', 'Засуха', 'Kuraklık', 'Sécheresse', 'Dürre', 'Sequía', 'Seca'],
+    ['화산', 'Volcano', '火山', '火山', '火山', 'Вулкан', 'Yanardağ', 'Volcan', 'Vulkan', 'Volcán', 'Vulcão'],
+    ['역병', 'Plague', '瘟疫', '瘟疫', '疫病', 'Чума', 'Veba', 'Peste', 'Seuche', 'Peste', 'Peste'],
+    ['지도를 눌러 발동', 'Tap the map to cast', '点击地图施放', '點擊地圖施放', '地図をタップして発動', 'Нажмите на карту', 'Haritaya dokunun', 'Touchez la carte', 'Karte antippen', 'Toca el mapa', 'Toque no mapa'],
+    ['국가가 없는 곳이에요', 'No nation here', '这里没有国家', '這裡沒有國家', 'ここに国はありません', 'Здесь нет страны', 'Burada ülke yok', 'Aucune nation ici', 'Hier ist keine Nation', 'Aquí no hay nación', 'Não há nação aqui'],
+    ['육지에만 세울 수 있어요', 'Land only', '只能建在陆地上', '只能建在陸地上', '陸地にのみ建てられます', 'Только на суше', 'Yalnızca karaya', 'Sur terre uniquement', 'Nur an Land', 'Solo en tierra', 'Apenas em terra'],
+    ['아래 도구 막대에서 권능을 고르고 지도를 누르면 그 자리에 바로 발동돼요.', 'Pick a power from the bar below, then tap the map to cast it right there.', '在下方工具栏选择神力，然后点击地图即可在该处施放。', '在下方工具列選擇神力，然後點擊地圖即可在該處施放。', '下のバーで神の力を選び、地図をタップするとその場所で発動します。', 'Выберите силу на панели внизу и нажмите на карту, чтобы применить её в этом месте.', 'Alttaki çubuktan bir güç seçin, ardından haritaya dokunarak orada kullanın.', 'Choisissez un pouvoir dans la barre du bas, puis touchez la carte pour le lancer à cet endroit.', 'Wähle unten eine Kraft und tippe auf die Karte, um sie genau dort zu wirken.', 'Elige un poder en la barra inferior y toca el mapa para lanzarlo ahí mismo.', 'Escolha um poder na barra inferior e toque no mapa para lançá-lo ali mesmo.'],
+    ['살펴보기: 국가를 눌러 정보 확인, 이름 변경, 외교', 'Inspect: tap a nation to see its details, rename it, or use diplomacy', '查看：点击国家可查看信息、改名、进行外交', '查看：點擊國家可查看資訊、改名、進行外交', '調べる：国をタップして情報の確認・改名・外交', 'Осмотр: нажмите на страну, чтобы увидеть сведения, переименовать её или заняться дипломатией', 'İncele: bilgileri görmek, adını değiştirmek veya diplomasi için bir ülkeye dokunun', 'Inspecter : touchez une nation pour voir ses infos, la renommer ou gérer la diplomatie', 'Ansehen: Nation antippen für Infos, Umbenennen und Diplomatie', 'Inspeccionar: toca una nación para ver sus datos, renombrarla o usar la diplomacia', 'Inspecionar: toque numa nação para ver os dados, renomeá-la ou usar a diplomacia']
+  ]);
 })();

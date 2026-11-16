@@ -2812,11 +2812,12 @@
     }
   }
 
-  function disaster(kind, n) {
+  // at({x, y})을 주면 그 자리에서 일어난다 (신의 권능으로 지도를 직접 눌렀을 때). 없으면 그 나라의 아무 구역.
+  function disaster(kind, n, at) {
     if (!n || !n.alive) return;
-    const p = randomProvinceOf(n, kind === 'storm');
+    const p = at || randomProvinceOf(n, kind === 'storm');
     if (!p) return;
-    const x = p.cx, y = p.cy;
+    const x = at ? at.x : p.cx, y = at ? at.y : p.cy;
     const hurt = (popLoss, goldLoss, stab) => {
       n.population = Math.max(1, Math.floor(n.population * (1 - popLoss)));
       n.gold = Math.max(0, n.gold - goldLoss);
@@ -3694,28 +3695,28 @@
   }
 
 
-  function forceWar() {
-    if (selected < 0) return;
-    const n = nations[selected];
-    const ns = neighbors(selected).filter(id => nations[id]?.alive);
+  function forceWar(id = selected) {
+    if (id < 0) return;
+    const n = nations[id];
+    const ns = neighbors(id).filter(o => nations[o]?.alive);
     if (!ns.length) {
       logEvent(`${n.name} 주변에 전쟁을 일으킬 국가가 없다.`, 'god');
       return;
     }
     const target = ns[irand(0, ns.length - 1)];
-    forceWarBetween(selected, target);
+    forceWarBetween(id, target);
   }
 
-  function forcePeace() {
-    if (selected < 0) return;
+  function forcePeace(id = selected) {
+    if (id < 0) return;
     let changed = false;
-    for (const w of wars) {
-      if (w.a === selected || w.b === selected) {
+    for (const w of wars.slice()) {
+      if (w.a === id || w.b === id) {
         makePeace(w.a, w.b);
         changed = true;
       }
     }
-    if (changed) logEvent(`${nations[selected].name} 주변의 전쟁이 신의 힘으로 멈췄다.`, 'god');
+    if (changed) logEvent(`${nations[id].name} 주변의 전쟁이 신의 힘으로 멈췄다.`, 'god');
   }
 
   function collapseNation(n) {
@@ -3779,6 +3780,48 @@
     logEvent(`신의 역병이 ${n.name}을(를) 덮쳤다.`, 'bad');
   }
 
+  // ===== 신의 권능 (아래 도구 막대, powers.js) =====
+  // 권능을 고른 뒤 지도를 누르면 국가를 선택하지 않아도 그 자리에 바로 발동한다. null이면 '살펴보기'(국가 선택).
+  let activePower = null;
+  let pendingSpawn = null; // '국가 생성' 권능으로 고른 자리
+  const POWER_DISASTERS = { quake: 1, storm: 1, flood: 1, drought: 1, volcano: 1 };
+  const POWER_BLESS = { popUp: 'pop', popDown: 'cursePop', armyUp: 'army', armyDown: 'curseArmy', goldUp: 'gold', goldDown: 'curseGold', techUp: 'tech', techDown: 'curseTech' };
+
+  // 결과: { ok, why } — why: 'outside'(지도 밖) · 'nation'(국가가 있어야 함) · 'land'(육지여야 함)
+  function applyPower(kind, sx, sy) {
+    const i = screenToCell(sx, sy);
+    if (i < 0) return { ok: false, why: 'outside' };
+    const x = i % MAP_W, y = Math.floor(i / MAP_W);
+    const id = owner[i];
+    const n = id >= 0 && nations[id]?.alive ? nations[id] : null;
+
+    if (kind === 'spawn') {
+      if (!land[i]) return { ok: false, why: 'land' };
+      pendingSpawn = { x, y };
+      ui.modal.style.display = 'flex';
+      ui.nationInput.focus();
+      return { ok: true };
+    }
+    if (POWER_DISASTERS[kind]) {
+      if (n) disaster(kind, n, { x: x + 0.5, y: y + 0.5 });
+      else { // 주인 없는 땅 · 바다: 피해를 입을 나라는 없지만 그 자리의 군대는 휩쓸린다
+        killDotsNear(x, y, kind === 'storm' ? 60 : 40, 3);
+        deathFx.push({ x: x + 0.5, y: y + 0.5, t: 4.5, d: 4.5, kind: kind === 'quake' ? 'quake' : kind === 'volcano' ? 'volcano' : 'storm' });
+      }
+    } else {
+      if (!n) return { ok: false, why: 'nation' };
+      if (POWER_BLESS[kind]) bless(POWER_BLESS[kind], n);
+      else if (kind === 'plague') plagueNation(n);
+      else if (kind === 'forceWar') forceWar(n.id);
+      else if (kind === 'forcePeace') forcePeace(n.id);
+      else if (kind === 'collapse') { collapseNation(n); if (selected === n.id) selected = -1; }
+      else return { ok: false, why: 'outside' };
+    }
+    if (selected >= 0) computeSelectionBorder();
+    updateUI();
+    return { ok: true, name: n ? n.name : '' };
+  }
+
   function startWarButton() {
     if (selected < 0 || targetId < 0) return;
     forceWarBetween(selected, targetId);
@@ -3791,6 +3834,7 @@
 
   function closeModal() {
     ui.modal.style.display = 'none';
+    pendingSpawn = null;
   }
 
   function addNationFromModal() {
@@ -3803,6 +3847,8 @@
     }
 
     let x = irand(8, MAP_W - 9), y = irand(8, MAP_H - 9);
+    if (pendingSpawn && land[idx(pendingSpawn.x, pendingSpawn.y)]) { x = pendingSpawn.x; y = pendingSpawn.y; } // 권능으로 고른 자리
+    pendingSpawn = null;
     if (!land[idx(x, y)]) {
       let placed = false;
       for (let i = 0; i < 1000; i++) {
@@ -3891,6 +3937,7 @@
   let initialZoom = 1;        // 두 손가락이 처음 닿았을 때의 카메라 줌 값
   let lastPointer = { x: 0, y: 0 };
   let isDistanceZooming = false; // 현재 핀치 줌(확대/축소) 작동 여부
+  let tapOnMap = false;          // 이번 누름이 지도(캔버스)에서 시작됐는지 — 버튼을 누른 것이 지도 탭으로 처리되지 않게
 
   // 1. 포인터 다운 (마우스 클릭 또는 손가락 터치 시작)
   canvas.addEventListener('pointerdown', e => {
@@ -3898,6 +3945,7 @@
     
     activePointers.push(e); // 현재 포인터 등록
     dragging = true;
+    tapOnMap = true;
     
     if (activePointers.length === 1) {
       dragX = e.clientX;
@@ -3969,9 +4017,12 @@
       canvas.classList.remove('dragging');
       
       // 확대/축소 중이 아니었고, 터치가 이동한 거리가 짧았다면 단순 클릭(국가 선택)으로 간주
-      if (!isDistanceZooming && Math.abs(e.clientX - dragX) <= 8 && Math.abs(e.clientY - dragY) <= 8) {
+      if (tapOnMap && !isDistanceZooming && Math.abs(e.clientX - dragX) <= 8 && Math.abs(e.clientY - dragY) <= 8) {
         const i = screenToCell(e.clientX, e.clientY);
-        if (i < 0 || owner[i] < 0) {
+        if (activePower) {
+          const res = applyPower(activePower, e.clientX, e.clientY);
+          window.dispatchEvent(new CustomEvent('wf:power', { detail: Object.assign({ kind: activePower, x: e.clientX, y: e.clientY }, res) }));
+        } else if (i < 0 || owner[i] < 0) {
           selected = -1;
           updateUI();
         } else {
@@ -3980,6 +4031,7 @@
       }
       isDistanceZooming = false;
       initialTouchDist = -1;
+      tapOnMap = false;
     } else if (activePointers.length === 1) {
       // 두 손가락 중 하나만 떼었을 때 잔여 드래그 좌표 보정
       isDistanceZooming = false;
@@ -4212,6 +4264,9 @@
     setPaused,
     isPaused: () => paused,
     isStarted: () => gameStarted,
+    // 신의 권능 도구 (powers.js): null이면 살펴보기(국가 선택)
+    setPower(kind) { activePower = kind || null; canvas.classList.toggle('power', !!activePower); },
+    getPower: () => activePower,
     // 디버그용: 살아 있는 국가의 요약 (군대 점 수, 구역 수 등)
     nationStats: () => nations.filter(n => n.alive).map(n => ({ name: n.name, army: Math.round(n.army), dots: dotCountOf(n.id), provs: provinceCount(n.id), tech: +n.tech.toFixed(1), pw: n.pw, pop: Math.round(n.population) }))
   };
