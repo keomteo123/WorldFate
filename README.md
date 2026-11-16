@@ -1,2 +1,2 @@
 # WorldFate
-World Fate : Realm Builder Simulator
+World Fate : Realm & god Simulator
