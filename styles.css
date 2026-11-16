@@ -335,7 +335,7 @@ button:disabled { opacity: .4; cursor: default; transform: none; }
 }
 #toast.show { opacity: 1; transform: translateX(-50%); }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (max-height: 520px) {
   .homeTitle { font-size: 44px; }
   .slot .th { flex-basis: 72px; height: 44px; }
 }
@@ -611,7 +611,7 @@ body.has-nation #left { display: block; animation: panelIn .16s ease-out; }
    - 패널: 국가 정보는 나라를 누르면, 세계의 역사는 도구 막대 끝의 '역사' 탭으로 아래 서랍처럼 열린다. 한 번에 하나만. (mobile-ui.js)
    - 600px 이하(휴대폰 세로)는 상단 바를 두 줄로, 세로가 짧은 가로 화면은 패널을 옆 서랍으로.
    ========================================================================== */
-@media (max-width: 900px) {
+@media (max-width: 900px), (max-height: 520px) {
   /* --- 상단 바 --- */
   #top {
     left: calc(6px + env(safe-area-inset-left, 0px));
@@ -748,7 +748,7 @@ body.has-nation #left { display: block; animation: panelIn .16s ease-out; }
 }
 
 /* 휴대폰 가로(세로가 짧음): 패널을 좌우 서랍으로, 도구 막대는 가운데 작게 */
-@media (min-width: 601px) and (max-width: 900px) and (max-height: 520px) {
+@media (min-width: 601px) and (max-height: 520px) {
   #dock { left: 50%; right: auto; bottom: calc(4px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); align-items: center; gap: 4px; max-width: 96vw; }
   #dockTabs { padding: 3px; border-width: 1px; border-radius: 12px; }
   .dkTab { flex: 0 0 58px; height: 46px; border-radius: 9px; }
@@ -769,7 +769,7 @@ body.has-nation #left { display: block; animation: panelIn .16s ease-out; }
   .nGrid .stat { flex-direction: row; align-items: baseline; justify-content: space-between; }
 }
 /* 세로가 짧은 화면(가로로 눕힌 휴대폰)의 홈 화면 · 대화상자 */
-@media (max-width: 900px) and (max-height: 520px) {
+@media (max-height: 520px) {
   .homeTitle { font-size: 34px; }
   .homeSub { margin-bottom: 10px; }
   .homeMenu { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: min(460px, 90vw); }
@@ -780,7 +780,14 @@ body.has-nation #left { display: block; animation: panelIn .16s ease-out; }
   .dlgBtns { margin-top: 8px; }
   .optRow { margin-top: 8px; gap: 6px 22px; }
   #newGame .dlgSub { display: none; }
-  #mapGrid { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); max-height: max(120px, calc(96dvh - 172px)); }
+  #newGame .dlgBox { display: flex; flex-direction: column; overflow: hidden; }
+  #newGame .dlgBox > * { flex: 0 0 auto; }
+  #newGame h3 { margin: 0 0 6px; }
+  #mapGrid { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); flex: 1 1 auto !important; min-height: 70px; max-height: none; overflow-y: auto; }
+  #newGame .optRow { flex-wrap: nowrap; margin-top: 6px; }
+  #newGame .optRow label { flex: 1 1 0; min-width: 0; }
+  #newGame .dlgBtns { margin-top: 6px; }
+  #newGame .dlgBtns button { min-height: 36px; }
   .mapCard .md { min-height: 0; }
   #slotList { max-height: max(110px, calc(96dvh - 170px)); }
   .tmBody { max-height: max(90px, calc(96dvh - 200px)); min-height: 90px; }
@@ -793,7 +800,7 @@ body.has-nation #left { display: block; animation: panelIn .16s ease-out; }
 #top::-webkit-scrollbar { display: none; }
 
 /* 태블릿 가로(터치 + 데스크톱 배치): ui-scale.js가 UI를 키우므로 상단 바의 로고는 숨겨 자리를 번다 */
-@media (pointer: coarse) and (min-width: 901px) {
+@media (pointer: coarse) and (min-width: 901px) and (min-height: 521px) {
   #top .logo-area { display: none; }
   #help { display: none; }
   #top button { min-height: 32px; padding: 4px 11px; }

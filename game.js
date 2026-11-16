@@ -49,6 +49,8 @@
   ];
   const eraIndex = t => { let i = 0; for (let k = 0; k < ERAS.length; k++) if (t >= ERAS[k].at) i = k; return i; };
   const eraOf = n => ERAS[eraIndex(n.tech)];
+  // 전투력 배수: 시대가 오를 때마다 1.5배씩 뛰고, 같은 시대 안에서도 기술력만큼 조금씩 오른다
+  const techMight = n => Math.pow(1.5, eraIndex(n.tech)) * (1 + n.tech / 100);
 
   const MAP_W = 1200;
   const MAP_H = 720;
@@ -1265,7 +1267,7 @@
   // 지도가 상단 바 · 아래 도구 막대 · (넓은 화면의) 양옆 패널에 가리지 않게 가운데에 맞춘다
   function fitCamera() {
     const uiScale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui')) || 1;
-    const wide = W > 900;
+    const wide = W > 900 && H > 520;
     const sideReserve = wide ? 358 * uiScale : 24;                 // 양옆 패널(국가 정보 · 세계의 역사) 폭. 패널이 지도 가장자리를 살짝만 덮는 정도
     const topReserve = wide ? 58 * uiScale : (W > 600 ? 62 : 106); // 상단 바 (휴대폰 세로는 두 줄)
     const bottomReserve = wide ? 74 * uiScale : 64;                // 도구 막대
@@ -2390,7 +2392,7 @@
         n.army -= (n.army - desiredArmy * 1.25) * 0.08;
       }
       n.army = Math.max(1, Math.min(n.army, Math.max(n.population * 0.45, n.godArmy || 0)));
-      n.power = n.army * (1 + n.tech / 100);
+      n.power = n.army * techMight(n);
     }
 
     syncMilitaryUnits();
@@ -2461,7 +2463,7 @@
         logEvent(`${n.name}이(가) 역사에서 사라졌다.`, 'war');
         continue;
       }
-      n.power = n.army * (1 + n.tech / 100);
+      n.power = n.army * techMight(n);
     }
     for (let i = 0; i < owner.length; i++) {
       const o = owner[i];
@@ -3508,7 +3510,8 @@
         const en = nations[enemy.owner];
         n.gold = Math.max(0, n.gold - BATTLE_GOLD_PER_SEC * dt); // 싸우는 동안 매 순간 군수 비용
         // 골드가 바닥난 나라는 보급이 끊겨 전투력이 떨어진다
-        const mult = (1 + n.tech / 70) / (1 + (en ? en.tech : 0) / 70) * (n.gold < 1 ? 0.6 : 1);
+        // 기술 격차가 승패를 가른다: 한 시대 차이면 약 1.6배, 두 시대 이상 벌어지면 수로도 뒤집기 어렵다
+        const mult = clamp(techMight(n) / (en ? techMight(en) : 1), 0.04, 25) * (n.gold < 1 ? 0.6 : 1);
         if (!enemy.dead && Math.random() < 1 - Math.exp(-KILL_RATE * mult * dt)) killDot(enemy);
       } else if (gp && u.prov === u.goal) {
         // 목표 구역에 도착: 구역 안을 뽈뽈거리며 돌아다닌다
@@ -3913,7 +3916,7 @@
     const c = n.capital || { x: n.seedX, y: n.seedY };
     return { x: c.x + 0.5, y: c.y + 0.5 };
   };
-  const linkFx = (a, b, tone) => { const pa = capitalPos(a), pb = capitalPos(b); fxAdd('link', pa.x, pa.y, { x2: pb.x, y2: pb.y, tone }); };
+  const linkFx = (a, b, tone) => { const pa = capitalPos(a), pb = capitalPos(b); fxAdd('link', pa.x, pa.y, tone === 'war' ? { x2: pb.x, y2: pb.y, tone, dur: 3600 } : { x2: pb.x, y2: pb.y, tone }); };
 
   // a가 b를 식민지로 삼을 수 없는 까닭. 삼을 수 있으면 null. (까닭은 사건 기록에도 남긴다)
   function colonizeBlock(ov, c) {

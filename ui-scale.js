@@ -7,7 +7,7 @@
   function apply() {
     const w = window.innerWidth, h = window.innerHeight;
     let ui = 1;
-    if (supported && w > 900) {
+    if (supported && w > 900 && h > 520) {
       // 1366×768을 기준(1배)으로, 가로·세로 중 작은 쪽 비율에 맞춘다. 너무 커지지 않게 상한을 둔다.
       ui = Math.min(w / 1366, h / 768);
       ui = Math.max(1, Math.min(2.4, ui));

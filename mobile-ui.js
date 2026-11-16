@@ -4,7 +4,7 @@
 (() => {
   const body = document.body;
   const tab = document.querySelector('#dockTabs [data-mp="right"]');
-  const narrow = window.matchMedia('(max-width: 900px)');
+  const narrow = window.matchMedia('(max-width: 900px), (max-height: 520px)');
 
   function setHistory(open) {
     body.classList.toggle('mp-right', open);

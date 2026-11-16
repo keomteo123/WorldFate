@@ -172,6 +172,14 @@
 
   // ----- 효과마다 미리 뽑아 두는 모양 -----
   const SETUP = {
+    // 선전포고: 양쪽에서 쏘아 올리는 포탄과 전선의 폭발
+    link(f, r) {
+      if (f.tone !== 'war') return;
+      f.shells = [];
+      for (let i = 0; i < 18; i++) {
+        f.shells.push({ side: i % 2, d: 0.2 + (i / 18) * 0.52 + r() * 0.03, u: 0.4 + r() * 0.2, off: (r() - 0.5) * 2, h: 0.7 + r() * 0.6, s: 0.8 + r() * 0.6 });
+      }
+    },
     quake(f, r) {
       f.cracks = makeCracks(r, 6, 0.95);
       f.jag = Array.from({ length: 3 }, () => Array.from({ length: 28 }, () => r() - 0.5));
@@ -587,6 +595,7 @@
         ctx.beginPath();
         for (let i = 0; i <= 28; i++) { const u = (i / 28) * reveal, p = at(u); i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }
       };
+      if (f.tone === 'war' && f.shells) { DRAW.warFront(ctx, f, k, sx, sy, ex, ey, at, dist, a); return; }
       ctx.lineCap = 'round';
       ctx.strokeStyle = `rgba(${c},${0.25 * a})`; ctx.lineWidth = 8;
       curve(); ctx.stroke();
@@ -611,6 +620,65 @@
           ctx.moveTo(cx - s * 0.5, cy + s * 0.02); ctx.lineTo(cx - s * 0.12, cy + s * 0.4); ctx.lineTo(cx + s * 0.55, cy - s * 0.38);
         }
         ctx.stroke();
+      }
+    },
+
+    // 전쟁: 두 나라의 진격 화살표가 가운데서 맞부딪히고, 포탄이 오가며 전선에 폭발이 인다
+    warFront(ctx, f, k, sx, sy, ex, ey, at, dist, a) {
+      const adv = easeOut(k * 3.2);
+      const tang = u => { const p = at(Math.max(0, u - 0.02)), q = at(Math.min(1, u + 0.02)); const l = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1; return [(q[0] - p[0]) / l, (q[1] - p[1]) / l]; };
+      const arrow = (u0, u1, col) => { // 군사 지도식 진격 화살표 (끝으로 갈수록 굵어진다)
+        const N = 16, L = [], R = [];
+        for (let i = 0; i <= N; i++) {
+          const u = u0 + (u1 - u0) * (i / N), p = at(u), d = tang(u), w = 1.5 + 4 * (i / N);
+          L.push([p[0] - d[1] * w, p[1] + d[0] * w]); R.push([p[0] + d[1] * w, p[1] - d[0] * w]);
+        }
+        const tip = at(u1), d = tang(u1), sgn = u1 > u0 ? 1 : -1, hw = 11, hl = 13;
+        ctx.beginPath();
+        L.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+        ctx.lineTo(tip[0] - d[1] * hw, tip[1] + d[0] * hw);
+        ctx.lineTo(tip[0] + d[0] * hl * sgn, tip[1] + d[1] * hl * sgn);
+        ctx.lineTo(tip[0] + d[1] * hw, tip[1] - d[0] * hw);
+        for (let i = N; i >= 0; i--) ctx.lineTo(R[i][0], R[i][1]);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(${col},${0.82 * a})`; ctx.fill();
+        ctx.strokeStyle = `rgba(30,10,6,${0.7 * a})`; ctx.lineWidth = 1.2; ctx.stroke();
+      };
+      const push = Math.sin(k * 26) * 0.012; // 전선이 밀고 밀린다
+      arrow(0.03, 0.03 + (0.41 + push) * adv, '226,58,44');
+      arrow(0.97, 0.97 - (0.41 - push) * adv, '74,128,226');
+      const hs = Math.min(1, dist / 260);
+      // 포탄
+      for (const s of f.shells) {
+        const v = (k - s.d) / 0.16;
+        if (v <= 0) continue;
+        const from = s.side ? at(0.95) : at(0.05), tgt = at(s.side ? 1 - s.u : s.u), d = tang(0.5);
+        const tx = tgt[0] - d[1] * s.off * 16 * hs, ty = tgt[1] + d[0] * s.off * 16 * hs;
+        if (v < 1) {
+          const pos = q => [from[0] + (tx - from[0]) * q, from[1] + (ty - from[1]) * q - Math.sin(q * Math.PI) * dist * 0.2 * s.h];
+          const p1 = pos(v), p0 = pos(Math.max(0, v - 0.13));
+          const g = ctx.createLinearGradient(p0[0], p0[1], p1[0], p1[1]);
+          g.addColorStop(0, 'rgba(255,190,90,0)'); g.addColorStop(1, `rgba(255,226,150,${a})`);
+          ctx.strokeStyle = g; ctx.lineWidth = 2; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
+          disc(ctx, p1[0], p1[1], 1.8, `rgba(255,246,214,${a})`);
+          if (v < 0.25) glow(ctx, from[0], from[1], 9 * (1 - v * 4) + 3, [[0, `rgba(255,236,170,${0.9 * a})`], [1, 'rgba(255,160,60,0)']]); // 포구 섬광
+        } else {
+          const b = (v - 1) / 1.6; // 폭발
+          if (b >= 1) continue;
+          const R = (7 + 9 * s.s) * (0.6 + 0.4 * hs);
+          if (b < 0.35) glow(ctx, tx, ty, R * (0.5 + b * 2.2), [[0, `rgba(255,250,220,${(1 - b / 0.35) * a})`], [0.4, `rgba(255,170,60,${(1 - b / 0.35) * 0.9 * a})`], [1, 'rgba(255,90,30,0)']]);
+          ring(ctx, tx, ty, R * easeOut(b * 1.6), `rgba(255,150,70,${(1 - b) * 0.8 * a})`, 1.6);
+          disc(ctx, tx, ty - b * 10, R * (0.35 + b * 0.75), `rgba(52,44,40,${(1 - b) * 0.55 * a})`); // 연기
+          for (let i = 0; i < 5; i++) { // 파편
+            const an = s.off * 3 + i * 1.257, rr = R * 1.5 * easeOut(b * 1.4);
+            disc(ctx, tx + Math.cos(an) * rr, ty + Math.sin(an) * rr * 0.7 + b * b * 10, 1.3, `rgba(255,210,120,${(1 - b) * a})`);
+          }
+        }
+      }
+      for (const [px, py, col] of [[sx, sy, '226,58,44'], [ex, ey, '74,128,226']]) {
+        disc(ctx, px, py, 5, `rgba(${col},${a})`);
+        ring(ctx, px, py, 6.5, `rgba(255,240,220,${0.8 * a})`, 1.4);
       }
     },
 
