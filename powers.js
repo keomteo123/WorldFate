@@ -69,7 +69,9 @@
     colOff: '설정에서 식민지가 꺼져 있어요',
     subject: '이미 종속 관계인 나라예요',
     weak: '국력·기술 격차가 부족해요',
-    nocolony: '식민지가 아닌 나라예요'
+    nocolony: '식민지가 아닌 나라예요',
+    subjectAlly: '식민지는 동맹을 맺을 수 없어요',
+    subjectWar: '식민지는 스스로 전쟁을 일으킬 수 없어요'
   };
 
   const $ = id => document.getElementById(id);

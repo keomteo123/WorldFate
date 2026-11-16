@@ -528,4 +528,10 @@
     ['{0}에 운석이 떨어졌다. 떨어진 자리 일대가 잿더미가 됐다.', 'A meteor struck {0}. The area around the impact was reduced to ashes.', '陨石坠落在{0}，落点一带化为灰烬。', '隕石墜落在{0}，落點一帶化為灰燼。', '{0}に隕石が落ちた。落下地点一帯は灰になった。', '{0}: упал метеорит. Окрестности места падения обратились в пепел.', '{0}: bir göktaşı düştü. Düştüğü yerin çevresi küle döndü.', "Une météorite a frappé {0}. Les environs de l'impact ont été réduits en cendres.", 'Ein Meteorit schlug in {0} ein. Die Gegend um den Einschlag liegt in Asche.', 'Un meteorito cayó sobre {0}. La zona del impacto quedó reducida a cenizas.', 'Um meteorito atingiu {0}. A zona do impacto ficou reduzida a cinzas.'],
     ['{0}에 벼락이 떨어졌다.', 'Lightning struck {0}.', '雷电击中了{0}。', '雷電擊中了{0}。', '{0}に雷が落ちた。', '{0}: ударила молния.', '{0}: yıldırım düştü.', 'La foudre a frappé {0}.', 'Ein Blitz schlug in {0} ein.', 'Un rayo cayó sobre {0}.', 'Um raio atingiu {0}.']
   ]);
+  // ===== v1.9.2: 식민지는 주권이 없다 =====
+  I.addRows([
+    ['식민지는 동맹을 맺을 수 없어요', "Colonies can't form alliances", '殖民地不能结盟', '殖民地不能結盟', '植民地は同盟を結べません', 'Колонии не могут заключать союзы', 'Koloniler ittifak kuramaz', "Les colonies ne peuvent pas former d'alliance", 'Kolonien können keine Bündnisse schließen', 'Las colonias no pueden formar alianzas', 'As colónias não podem formar alianças'],
+    ['식민지는 스스로 전쟁을 일으킬 수 없어요', "Colonies can't start wars on their own", '殖民地不能自行开战', '殖民地不能自行開戰', '植民地は自ら戦争を始められません', 'Колонии не могут сами начинать войны', 'Koloniler kendi başına savaş başlatamaz', 'Les colonies ne peuvent pas déclarer la guerre seules', 'Kolonien können nicht selbst Krieg beginnen', 'Las colonias no pueden iniciar guerras por su cuenta', 'As colónias não podem iniciar guerras sozinhas'],
+    ['{0}이(가) {1} {2}을(를) 지키기 위해 참전했다.', '{0} joined the war to defend its {1} {2}.', '{0}为保卫其{1}{2}而参战。', '{0}為保衛其{1}{2}而參戰。', '{0}が{1}の{2}を守るために参戦した。', '{0} вступает в войну, чтобы защитить {2} ({1}).', '{0}, {2} ({1}) için savaşa katıldı.', '{0} entre en guerre pour défendre {2} ({1}).', '{0} tritt in den Krieg ein, um {2} ({1}) zu verteidigen.', '{0} entra en guerra para defender a {2} ({1}).', '{0} entra na guerra para defender {2} ({1}).']
+  ]);
 })();

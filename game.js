@@ -401,9 +401,15 @@
     return alliances.find(g => g.members.includes(n.id)) || null;
   }
 
+  // 식민지는 주권이 없으므로 지도 · 깃발 · 군대의 색은 종주국을 따른다 (국경선과 이름표는 그대로라 구분은 된다)
+  function colorSource(n) {
+    return isSubject(n) ? nations[n.overlordId] : n;
+  }
+
   function getGroupColorForNation(n) {
-    const group = getNationGroup(n);
-    return group ? group.color : n.color;
+    const src = colorSource(n);
+    const group = getNationGroup(src);
+    return group ? group.color : src.color;
   }
 
   function getDisplayNationName(n) {
@@ -692,6 +698,7 @@
         cn.overlordId = on.id; cn.isColony = true; cn.colonySince = year;
       }
     }
+    dropColoniesFromAlliances();
     for (const [a, b] of sc.wars || []) {
       if (byName.has(a) && byName.has(b)) forceWarBetween(byName.get(a), byName.get(b));
     }
@@ -1537,8 +1544,9 @@
 
     const tints = nations.map(n => {
       if (!n) return null;
-      const group = getNationGroup(n);
-      let hex = n.color;                                   // 국가
+      const src = colorSource(n);                          // 식민지는 종주국의 색으로 칠한다
+      const group = getNationGroup(src);
+      let hex = src.color;                                 // 국가
       if (layer === 'alliance') hex = group ? group.color : '#9a9a94'; // 연맹: 무소속은 회색
       else if (layer === 'species') hex = categoryColor('species:' + n.species);
       else if (layer === 'religion') hex = religionColor[n.religion] || categoryColor('religion:' + n.religion);
@@ -2225,6 +2233,7 @@
     if (aId === bId) return false;
     const a = nations[aId], b = nations[bId];
     if (!a || !b || !a.alive || !b.alive) return false;
+    if (isSubject(a) || isSubject(b)) return false; // 식민지는 주권이 없어 동맹을 맺지 못한다
     const ga = getNationGroup(a), gb = getNationGroup(b);
     if (ga && ga === gb) return false;
     if (ga && gb) return false; // 서로 다른 두 동맹을 합치지는 않는다
@@ -2306,6 +2315,8 @@
     callAllies(bId, aId);
     callColonies(aId, bId);
     callColonies(bId, aId);
+    callOverlord(aId, bId);
+    callOverlord(bId, aId);
     updateUI();
   }
 
@@ -2597,7 +2608,8 @@
       }
     }
 
-    // 2) 사라진 국가가 낀 동맹 정리
+    // 2) 사라진 국가가 낀 동맹 정리 (식민지가 된 나라도 동맹에서 빠진다)
+    dropColoniesFromAlliances();
     for (const g of alliances.slice()) {
       const alive = g.members.filter(id => nations[id]?.alive);
       if (alive.length < 2) endAllianceWithTarget(g.members[0]);
@@ -2609,13 +2621,13 @@
 
     // 3) 동맹 체결: 사이가 좋거나 같은 적을 둔 이웃과
     for (const a of living) {
-      if (a.isRebel || rand() > 0.06) continue;
+      if (a.isRebel || isSubject(a) || rand() > 0.06) continue;
       const ga = getNationGroup(a);
       if (ga && ga.members.length >= MAX_ALLIANCE_SIZE) continue;
       let best = null, bestScore = 15;
       for (const bId of neighbors(a.id)) {
         const b = nations[bId];
-        if (!b?.alive || b.isRebel || atWar(a.id, bId)) continue;
+        if (!b?.alive || b.isRebel || isSubject(b) || atWar(a.id, bId)) continue;
         const gb = getNationGroup(b);
         if (gb && (gb === ga || gb.members.length >= MAX_ALLIANCE_SIZE)) continue;
         if (ga && gb) continue;
@@ -2657,6 +2669,10 @@
       for (const bId of neighbors(a.id)) {
         const b = nations[bId];
         if (!b?.alive || atWar(a.id, bId) || sameGroup(a, b) || truceActive(a, b) || subjectPair(a, b)) continue;
+        if (isSubject(b)) { // 식민지를 치면 종주국이 나서므로, 종주국과 싸울 수 있는지를 따진다
+          const ov = nations[b.overlordId];
+          if (ov.id === a.id || sameGroup(a, ov) || truceActive(a, ov) || sidePower(ov) + b.power > sidePower(a) * 1.6) continue;
+        }
         if (sidePower(b) > sidePower(a) * 1.6) continue;
         let score = -relOf(a, b) + (a.power / Math.max(1, b.power) - 1) * 30;
         if (provinces.some(p => p.owner === a.id && p.adj.some(q => provinces[q].owner === bId))) score += 15;
@@ -2717,12 +2733,14 @@
     colony.unrest = Math.min(colony.unrest || 0, 20);
     setTruce(colony, overlord, 15);
     if (text) logEvent(text, 'war');
+    territoryDirty = true; // 지도 색이 종주국 색으로 바뀐다
   }
 
   function freeColony(colony) {
     colony.overlordId = null;
     colony.isColony = false;
     colony.colonySince = undefined;
+    territoryDirty = true; // 지도 색이 제 색으로 돌아온다
   }
 
   // 독립 전쟁: 식민지가 종주국에서 떨어져 나가며 전쟁을 벌인다
@@ -2739,6 +2757,33 @@
     logEvent(`${colony.name}이(가) ${ov.name}에 맞서 독립 전쟁을 일으켰다!`, 'war');
     deathFx.push({ x: colony.capital.x + 0.5, y: colony.capital.y + 0.5, t: 2.4, kind: 'rebel' });
     callAllies(colony.id, ov.id);
+  }
+
+  // 식민지는 주권이 없다: 동맹을 맺지 못하고(createAllianceBetween), 스스로 전쟁을 일으키지 못하며(warBlock),
+  // 누가 식민지를 치면 종주국이 대신 나선다. 식민지가 할 수 있는 것은 독립 전쟁(colonyRevolt)뿐이다.
+  function callOverlord(colonyId, enemyId) {
+    const c = nations[colonyId], enemy = nations[enemyId];
+    if (!isSubject(c) || !enemy?.alive) return;
+    const ov = nations[c.overlordId];
+    if (ov.id === enemyId || findWar(ov.id, enemyId) || sameGroup(ov, enemy)) return;
+    wars.push({ a: ov.id, b: enemyId, age: 0, scoreA: 0, scoreB: 0, goal: '식민지 방어', active: true, lastChange: year });
+    logEvent(`${ov.name}이(가) ${colonyWord()} ${c.name}을(를) 지키기 위해 참전했다.`, 'war');
+    callColonies(ov.id, enemyId);
+  }
+
+  // 식민지가 낀 동맹에서 식민지를 뺀다 (시나리오 시작 · 예전 저장 · 식민지가 된 직후)
+  function dropColoniesFromAlliances() {
+    for (const g of alliances.slice()) {
+      const keep = g.members.filter(id => !isSubject(nations[id]));
+      if (keep.length === g.members.length) continue;
+      const autoNamed = g.name === nameAlliance(g); // 자동으로 붙은 이름이면 남은 나라에 맞춰 다시 짓는다 (시나리오가 정한 이름은 그대로 둔다)
+      for (const id of g.members) if (!keep.includes(id) && nations[id]) nations[id].allianceId = null;
+      g.members = keep;
+      if (keep.length < 2) {
+        for (const id of keep) if (nations[id]) nations[id].allianceId = null;
+        alliances = alliances.filter(x => x !== g);
+      } else if (autoNamed) g.name = nameAlliance(g);
+    }
   }
 
   // 종주국이 전쟁을 하면 식민지가 따라 참전한다
@@ -3745,8 +3790,10 @@
   }
 
 
-  // 두 나라가 전쟁을 시작할 수 없는 까닭 ('ally' 같은 동맹 · 'atwar' 이미 전쟁 중). 시작할 수 있으면 null.
+  // a가 b에게 전쟁을 걸 수 없는 까닭 ('subjectWar' a가 식민지 · 'ally' 같은 동맹 · 'atwar' 이미 전쟁 중). 걸 수 있으면 null.
   function warBlock(aId, bId) {
+    // 식민지는 스스로 전쟁을 일으키지 못한다. 종주국을 상대로 한 전쟁(= 독립 전쟁)만 된다.
+    if (isSubject(nations[aId]) && !subjectPair(nations[aId], nations[bId])) return 'subjectWar';
     const ga = getNationGroup(nations[aId]);
     if (ga && ga === getNationGroup(nations[bId])) return 'ally';
     if (wars.some(w => (w.a === aId && w.b === bId) || (w.b === aId && w.a === bId))) return 'atwar';
@@ -3890,6 +3937,7 @@
       if (!makePeace(a.id, b.id)) return { ok: false, why: 'nowar' };
       linkFx(a, b, 'peace');
     } else if (kind === 'dipAlly') {
+      if (isSubject(a) || isSubject(b)) return { ok: false, why: 'subjectAlly' };
       const ga = getNationGroup(a), gb = getNationGroup(b);
       if (ga && ga === gb) return { ok: false, why: 'allied' };
       if (ga && gb) return { ok: false, why: 'twoGroups' };
@@ -3981,6 +4029,7 @@
         linkFx(ov, n, 'free');
       } else return { ok: false, why: 'outside' };
     }
+    if (res.ok && /^(dipWar|dipColonize|dipRelease|forceWar)$/.test(kind)) renderWorld(); // 식민지가 되거나 풀려나면 지도 색이 바뀐다 (일시정지 중에도 바로)
     if (selected >= 0) computeSelectionBorder();
     updateUI();
     return res;
@@ -4368,6 +4417,7 @@
     layer = ['political', 'alliance', 'species', 'religion'].includes(d.layer) ? d.layer : 'political';
     initialNationCount = d.initial || Math.max(8, nations.filter(n => !n.parentId).length);
     for (const n of nations) { n.relations = n.relations || {}; n.cities = n.cities || []; }
+    dropColoniesFromAlliances(); // 예전 저장: 식민지가 동맹에 들어 있을 수 있다
 
     const raw = new Int32Array(MAP_W * MAP_H);
     rleDecode(d.provOf, raw);
@@ -4455,6 +4505,8 @@
     setShowArmies(v) { view.armies = !!v; try { localStorage.setItem(VIEW_KEY, JSON.stringify(view)); } catch (e) {} viewChanged(); },
     getShowArmies: () => view.armies,
     select: setSelected,
+    // 디버그용: 화면 좌표에 있는 나라의 이름 (없으면 null)
+    nationAt(sx, sy) { const i = screenToCell(sx, sy), o = i >= 0 ? owner[i] : -1; return o >= 0 && nations[o]?.alive ? nations[o].name : null; },
     // 디버그용: 살아 있는 국가의 요약 (군대 점 수, 구역 수 등)
     nationStats: () => nations.filter(n => n.alive).map(n => ({ name: n.name, army: Math.round(n.army), dots: dotCountOf(n.id), provs: provinceCount(n.id), tech: +n.tech.toFixed(1), pw: n.pw, pop: Math.round(n.population) }))
   };
