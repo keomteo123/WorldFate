@@ -123,16 +123,16 @@
   <!-- 신의 권능 도구 막대 (powers.js): 권능을 고르고 지도를 누르면 그 자리에 발동한다.
        양 끝의 '시야' · '역사'는 좁은 화면에서 좌우 패널을 여닫는 버튼이다 (mobile-ui.js). -->
   <div id="dock">
-    <div id="dockHint"><b id="dockHintName"></b><span>지도를 눌러 발동</span><button id="dockHintClose" title="권능 해제">✕</button></div>
+    <div id="dockHint"><i id="dockHintIcon"></i><b id="dockHintName"></b><span>지도를 눌러 발동</span><button id="dockHintClose" title="권능 해제">✕</button></div>
     <div id="dockTray"></div>
     <div id="dockTabs">
-      <button class="dkTab dkPanel" data-mp="left"><i>🗺️</i><span>시야</span></button>
-      <button class="dkTab" data-tool="inspect"><i>🔍</i><span>살펴보기</span></button>
-      <button class="dkTab" data-cat="disaster"><i>🌋</i><span>재해</span></button>
-      <button class="dkTab" data-cat="bless"><i>✨</i><span>축복</span></button>
-      <button class="dkTab" data-cat="curse"><i>💀</i><span>저주</span></button>
-      <button class="dkTab" data-cat="fate"><i>👑</i><span>운명</span></button>
-      <button class="dkTab dkPanel" data-mp="right"><i>📜</i><span>역사</span></button>
+      <button class="dkTab dkPanel" data-mp="left"><i data-ic="map"></i><span>시야</span></button>
+      <button class="dkTab" data-tool="inspect"><i data-ic="inspect"></i><span>살펴보기</span></button>
+      <button class="dkTab" data-cat="disaster"><i data-ic="disaster"></i><span>재해</span></button>
+      <button class="dkTab" data-cat="bless"><i data-ic="bless"></i><span>축복</span></button>
+      <button class="dkTab" data-cat="curse"><i data-ic="curse"></i><span>저주</span></button>
+      <button class="dkTab" data-cat="fate"><i data-ic="fate"></i><span>운명</span></button>
+      <button class="dkTab dkPanel" data-mp="right"><i data-ic="history"></i><span>역사</span></button>
     </div>
   </div>
 
@@ -305,6 +305,7 @@
 <script src="game.js"></script>
 <script src="visual-overlays.js"></script>
 <script src="menu.js"></script>
+<script src="icons.js"></script>
 <script src="mobile-ui.js"></script>
 <script src="powers.js"></script>
 <script src="version.js"></script>

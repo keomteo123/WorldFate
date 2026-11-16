@@ -374,10 +374,14 @@
     nationalism: { label: '민족', rebel: '민족 독립군', final: '독립국', ideology: '민족주의' },
     theocracy: { label: '종교', rebel: '종교 봉기군', final: '신정국', ideology: '신권정' },
     merchant: { label: '상인', rebel: '상인 공화파', final: '상인공화국', ideology: '도시국가' },
-    warlord: { label: '군벌', rebel: '군벌 반란군', final: '군벌국', ideology: '군국주의' }
+    warlord: { label: '군벌', rebel: '군벌 반란군', final: '군벌국', ideology: '군국주의' },
+    separatism: { label: '분리', rebel: '분리 독립군', final: '자치공화국', ideology: '연방제' },
+    democracy: { label: '민주', rebel: '민주화 시민군', final: '민주공화국', ideology: '공화정' }
   };
   const REBELS_WW2 = { mode: 'ideology', types: ['communism', 'capitalism', 'militarism', 'monarchy', 'nationalism'] };
   const REBELS_WW1 = { mode: 'ideology', types: ['communism', 'capitalism', 'militarism', 'monarchy', 'nationalism'] };
+  // 2026년: 오늘날의 반란은 엉뚱한 나라 이름 대신 모국 이름을 딴 분리 · 민주화 · 군부 세력 등으로 나타난다 (예: 미국 분리 독립군 → 미국 자치공화국)
+  const REBELS_2026 = { mode: 'ideology', liberation: '해방군', types: ['separatism', 'democracy', 'militarism', 'communism', 'nationalism', 'theocracy'] };
   // 1500년에는 공산주의·자본주의가 없으므로 시대에 맞는 정치 세력만 쓴다
   const REBELS_AGE = { mode: 'ideology', types: ['monarchy', 'theocracy', 'merchant', 'warlord', 'nationalism'] };
   // 삼국시대: 모국 이름에 맞는 "신 ○○" 후보. 없으면 default 후보를 쓴다.
@@ -414,7 +418,7 @@
     ['네덜란드령 동인도', '네덜란드'], ['독일령 아프리카', '독일 제국'], ['포르투갈령 아프리카', '포르투갈'], ['이탈리아령 아프리카', '이탈리아']];
 
   const LIST = [
-    { id: 'world2026', name: '2026년 세계', icon: '🌍', year: 2026, mapId: 'world', provSpacing: 11, nations: W2026, borders: { map: B, extras: EXTRA_2026 },
+    { id: 'world2026', name: '2026년 세계', icon: '🌍', year: 2026, mapId: 'world', provSpacing: 11, nations: W2026, borders: { map: B, extras: EXTRA_2026 }, rebels: REBELS_2026,
       desc: '오늘날의 세계. 약 100개 국가가 실제 영토로 시작.',
       alliances: [
         { name: '북대서양 동맹', members: ['미국', '캐나다', '영국', '프랑스', '독일', '이탈리아', '폴란드', '튀르키예'] },

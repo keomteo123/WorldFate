@@ -2867,7 +2867,7 @@
     logEvent(`${n.name}에서 쿠데타가 일어나 정권이 바뀌었다. (${old} → ${n.ideology})`, 'war');
     const cap = n.cities.find(c => c.capital);
     if (cap) deathFx.push({ x: cap.x + 0.5, y: cap.y + 0.5, t: 2.4, kind: 'rebel' });
-    if (rand() < 0.25 && !isSubject(n) && canSpawnRebels()) spawnRebellion(n);
+    if (rand() < 0.1 && !isSubject(n) && canSpawnRebels()) spawnRebellion(n);
   }
 
   function randomEvents() {
@@ -3030,16 +3030,26 @@
   function rebelIdentity(parent, liberatedFrom) {
     const sc = currentMap.scenarioId && window.WFScenarios ? WFScenarios.get(currentMap.scenarioId) : null;
     const cfg = sc && sc.rebels;
-    if (!cfg) return null;
     const root = x => x.baseName || x.name; // 반란이 반란을 낳아도 이름이 길어지지 않게 원래 나라 이름을 쓴다
     const used = new Set(nations.filter(n => n.alive).map(n => n.name));
     const uniq = base => { let nm = base, k = 2; while (used.has(nm)) nm = `${base} ${k++}세`; return nm; };
+    if (!cfg) {
+      // 시나리오가 아닌 지도: 해방군은 독립하면 엉뚱한 새 이름 대신 원래 나라 이름을 되찾는다
+      if (!liberatedFrom) return null;
+      const b = root(liberatedFrom);
+      return { name: uniq(`${b} 해방군`), final: used.has(b) ? uniq(`신 ${b}`) : b, ideology: '부족연맹', base: b };
+    }
     if (cfg.mode === 'names') {
       if (liberatedFrom) return { name: uniq(`${root(liberatedFrom)} ${cfg.liberation || '해방군'}`), final: uniq(`신 ${root(liberatedFrom)}`), ideology: '부족연맹', base: root(liberatedFrom) };
       const pool = (cfg.byParent && cfg.byParent[parent.name]) || cfg.default;
       const free = pool.filter(x => !used.has(x));
       const pick = (free.length ? free : pool)[irand(0, (free.length ? free : pool).length - 1)];
       return { name: uniq(pick), final: uniq(pick), ideology: parent.ideology === '군주제' ? '군주제' : '부족연맹', base: pick };
+    }
+    // 점령지에서 일어난 봉기는 이념 세력이 아니라 원래 나라의 해방군이다 (liberation을 정한 시나리오만)
+    if (liberatedFrom && cfg.liberation) {
+      const b = root(liberatedFrom);
+      return { name: uniq(`${b} ${cfg.liberation}`), final: used.has(b) ? uniq(`신 ${b}`) : b, ideology: liberatedFrom.ideology, base: b };
     }
     const types = cfg.types.map(t => WFScenarios.ideo[t]).filter(t => t && t.ideology !== parent.ideology);
     const t = types[irand(0, types.length - 1)];
@@ -3097,10 +3107,20 @@
   }
 
   // 대규모 반란: 수도를 뺀 영토의 약 30%가 한꺼번에 떨어져 나간다
-  // 세계가 잘게 부서지지 않도록: 살아있는 국가 수 상한(시작 국가 수의 약 1.6배) + 나라별 40년 쿨다운
+  // 세계가 잘게 부서지지 않도록: 살아있는 국가 수 상한(시작 국가 수의 약 1.3배) + 나라별 쿨다운(대규모 반란 70년, 점령지 봉기 15년)
+  // 반란이 너무 잦다는 의견으로 v1.8.1에서 빈도를 전체적으로 절반 이하로 낮췄다. 더 조절하려면 아래 REBEL 값만 바꾸면 된다.
+  const REBEL = {
+    capRatio: 1.3, capExtra: 5,   // 살아 있는 국가 수 상한: max(시작 수 × capRatio, 시작 수 + capExtra)
+    bigCooldown: 70,              // 같은 나라에서 대규모 반란이 다시 일어나기까지 (년)
+    bigUnrest: 55, bigDiv: 2000,  // 불만이 bigUnrest를 넘으면 해마다 (불만 − bigUnrest) / bigDiv 확률
+    sizeMax: 25,                  // 영토가 넓어서 생기는 불만의 상한 — 크다는 이유만으로 안정된 대국이 쪼개지지 않게
+    lowStabChance: 0.025,         // 안정도가 5년 넘게 바닥일 때 해마다
+    revoltCooldown: 15,           // 같은 나라의 점령지 봉기 간격 (년)
+    revoltBase: 0.0015, revoltUnrest: 0.00015, revoltMax: 0.03 // 점령지 구역당 확률과 나라별 연간 상한
+  };
   function canSpawnRebels() {
     const alive = nations.filter(n => n.alive).length;
-    return alive < Math.max(initialNationCount * 1.6, initialNationCount + 8);
+    return alive < Math.max(initialNationCount * REBEL.capRatio, initialNationCount + REBEL.capExtra);
   }
 
   function spawnRebellion(n) {
@@ -3115,7 +3135,7 @@
       colonyRevolt(c);
       return;
     }
-    if (!canSpawnRebels() || year - (n.lastRebellion ?? -999) < 40) return;
+    if (!canSpawnRebels() || year - (n.lastRebellion ?? -999) < REBEL.bigCooldown) return;
     const mine = provinces.filter(p => p.owner === n.id && !p.capture);
     if (mine.length < 3) return;
     n.lastRebellion = year;
@@ -3195,16 +3215,19 @@
       const conquered = mine.filter(p => p.origOwner >= 0 && p.origOwner !== n.id && year - p.conqueredYear < 60);
       const target = clamp(
         (60 - n.stability) * 0.9 + (50 - n.happiness) * 0.5 + (warCount.get(n.id) || 0) * 4 +
-        Math.max(0, mine.length - 6) * 3 + (conquered.length / Math.max(1, mine.length)) * 30 + (isSubject(n) ? 35 + Math.min(25, (year - (n.colonySince ?? year)) * 0.5) : 0), 0, 100);
+        Math.min(REBEL.sizeMax, Math.max(0, mine.length - 6) * 1.5) + (conquered.length / Math.max(1, mine.length)) * 30 + (isSubject(n) ? 35 + Math.min(25, (year - (n.colonySince ?? year)) * 0.5) : 0), 0, 100);
       n.unrest = (n.unrest || 0) + (target - (n.unrest || 0)) * 0.1;
       n.lowStabYears = n.stability < 22 ? (n.lowStabYears || 0) + 1 : 0;
 
-      for (const p of conquered) {
-        if (p.capture || isCapitalProvince(p)) continue;
-        if (rand() < 0.004 + n.unrest * 0.0004) { spawnProvinceRevolt(p, n); break; }
+      // 점령지 봉기: 점령한 구역이 많을수록 잦지만, 나라별로 연간 상한과 쿨다운을 둔다
+      const risky = conquered.filter(p => !p.capture && !isCapitalProvince(p));
+      if (risky.length && year - (n.lastRevolt ?? -999) >= REBEL.revoltCooldown &&
+          rand() < Math.min(REBEL.revoltMax, risky.length * (REBEL.revoltBase + n.unrest * REBEL.revoltUnrest))) {
+        n.lastRevolt = year;
+        spawnProvinceRevolt(risky[irand(0, risky.length - 1)], n);
       }
       if (!n.alive) continue;
-      if (mine.length >= 3 && ((n.unrest > 45 && rand() < (n.unrest - 45) / 700) || (n.lowStabYears >= 5 && rand() < 0.06))) spawnRebellion(n);
+      if (mine.length >= 3 && ((n.unrest > REBEL.bigUnrest && rand() < (n.unrest - REBEL.bigUnrest) / REBEL.bigDiv) || (n.lowStabYears >= 5 && rand() < REBEL.lowStabChance))) spawnRebellion(n);
     }
   }
 
