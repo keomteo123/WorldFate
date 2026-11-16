@@ -150,7 +150,7 @@ input[type="checkbox"], input[type="radio"] { width: auto; padding: 0; }
   scrollbar-width: thin;
   scrollbar-color: rgba(220, 179, 92, .35) transparent;
 }
-#left { left: 10px; width: 188px; }
+#left { left: 10px; width: 206px; }
 #right { right: 10px; width: 196px; }
 .panel h3 {
   margin: 0 0 6px;
@@ -175,10 +175,6 @@ input[type="checkbox"], input[type="radio"] { width: auto; padding: 0; }
 .small { font-size: 10px; color: var(--muted); }
 .stat { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dotted rgba(206, 168, 96, .18); }
 .stat b { color: var(--gold-bright); font-weight: 700; }
-#selectedBox { padding: 8px; background: rgba(0, 0, 0, .22); border: 1px solid rgba(206, 168, 96, .18); border-radius: 3px; }
-#flag { display: inline-block; width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: 2px; font-size: 11px; vertical-align: middle; margin-right: 5px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .4); }
-#nationName { font-size: 13px; font-weight: 800; color: var(--gold-bright); vertical-align: middle; }
-#godPanel input { margin-bottom: 4px; }
 #worldInfo { margin-bottom: 4px; }
 #logs { display: flex; flex-direction: column; gap: 4px; }
 .log { padding: 4px 6px; background: rgba(0, 0, 0, .2); border-left: 2px solid rgba(206, 168, 96, .4); font-size: 10.5px; }
@@ -391,8 +387,8 @@ button:disabled { opacity: .4; cursor: default; transform: none; }
 
 
 /* ==========================================================================
-   신의 권능 도구 막대 (#dock, powers.js)
-   아래 가운데의 탭(살펴보기 · 재해 · 축복 · 저주 · 운명)을 누르면 그 위에 권능 칸이 열린다.
+   도구 막대 (#dock, powers.js)
+   아래 가운데의 탭(보기 · 재해 · 축복 · 저주 · 외교 · 운명)을 누르면 그 위에 도구 칸이 열린다.
    권능을 고른 뒤 지도를 누르면 국가를 선택하지 않아도 그 자리에 발동한다.
    ========================================================================== */
 #help { display: none; }
@@ -429,11 +425,13 @@ canvas.power { cursor: crosshair; }
 .ic .s { fill: currentColor; stroke: none; }
 .ic .k { fill: #2a1b0f; stroke: none; }
 .ic .kl { stroke: #2a1b0f; }
-.dkTab i, .dkTool i, #dockHint i, .pfx i { font-style: normal; line-height: 1; color: #f6dfa0; }
+.dkTab i, .dkTool i, #dockHint i, .pfx i { position: relative; font-style: normal; line-height: 1; color: #f6dfa0; }
 .dkTab i, .dkTool i { font-size: 24px; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .55)); }
 .dkTab:not(.active):not(:hover) i { opacity: .82; }
 #dockHint i { font-size: 17px; margin-right: -2px; }
 .dkTab span, .dkTool span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* 도구 이름은 두 줄까지. 긴 낱말(독일어 · 러시아어)은 붙임표로 끊는다 */
+.dkTool span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: keep-all; overflow-wrap: anywhere; -webkit-hyphens: auto; hyphens: auto; }
 
 .dkTab { width: 62px; height: 48px; background: none; border: 1px solid transparent; border-radius: 9px; box-shadow: none; }
 .dkTab span { white-space: nowrap; }
@@ -481,9 +479,39 @@ canvas.power { cursor: crosshair; }
   background: rgba(20, 13, 8, .93); border: 1px solid var(--gold); border-radius: 16px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 16px rgba(230, 197, 109, .18);
 }
-#dockHint.open { display: flex; }
-#dockHint b { color: var(--gold-bright); font-size: 12px; }
-#dockHintClose { width: 22px; height: 22px; padding: 0; border-radius: 50%; font-size: 10px; line-height: 1; }
+#dockHint.open { display: flex; animation: mpUp .14s ease-out; }
+#dockHint b { flex: 0 0 auto; color: var(--gold-bright); font-size: 12px; }
+#dockHint > i { flex: 0 0 auto; }
+#dockHintText { flex: 0 1 auto; min-width: 0; white-space: normal; line-height: 1.25; } /* 좁으면 안내 문구만 두 줄로 */
+/* 외교 권능에서 먼저 고른 나라 */
+#dockHint em {
+  flex: 0 0 auto; max-width: 34vw; overflow: hidden; text-overflow: ellipsis;
+  padding: 2px 9px; font-style: normal; font-weight: 700; color: #fff6d8;
+  background: rgba(220, 179, 92, .26); border: 1px solid rgba(255, 227, 160, .55); border-radius: 10px;
+}
+#dockHint em:empty { display: none; }
+#dockHintClose { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 22px; height: 22px; padding: 0; border-radius: 50%; }
+#dockHintClose i { font-size: 10px; margin: 0; }
+
+/* 보기 칸: 지도 모드(하나만 켜짐)와 켜고 끄는 표시 */
+.dkTool.on {
+  color: #fff3c4;
+  background: linear-gradient(180deg, rgba(160, 124, 58, .8), rgba(93, 67, 29, .8));
+  border-color: rgba(255, 227, 160, .8);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .22);
+}
+.dkTool.toggle::before { /* 켜짐 · 꺼짐 불빛 */
+  content: ""; position: absolute; top: 6px; right: 7px; width: 8px; height: 8px; border-radius: 50%;
+  background: #7fe08f; box-shadow: 0 0 7px #7fe08f;
+}
+.dkTool.toggle.off { color: var(--muted); }
+.dkTool.toggle.off::before { background: #6b5a45; box-shadow: none; }
+.dkTool.toggle.off i .ic { opacity: .4; }
+.dkTool.toggle.off i::after { /* 꺼졌을 때 아이콘에 긋는 빗금 */
+  content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 3px; margin-left: -1.5px;
+  background: #e0564a; border-radius: 2px; box-shadow: 0 0 0 1.5px #2a1d11; transform: rotate(45deg);
+}
+.dkSep { flex: 0 0 1px; align-self: stretch; margin: 7px 3px; background: var(--line); }
 
 /* 권능을 쓴 자리에 잠깐 뜨는 효과 */
 .pfx { position: fixed; z-index: 20; pointer-events: none; transform: translate(-50%, -50%); }
@@ -503,8 +531,75 @@ canvas.power { cursor: crosshair; }
 @keyframes pfxFail { 0% { transform: translateY(6px); opacity: 0; } 12% { transform: none; opacity: 1; } 75% { opacity: 1; } 100% { transform: translateY(-10px); opacity: 0; } }
 @keyframes mpUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 
-/* 권능은 도구 막대로 옮겼으므로, 국가 패널에는 이름 바꾸기만 남긴다 (버튼 자체는 game.js가 쓰므로 지우지 않고 숨긴다) */
-#godPanel .actionGrid, #godPanel h4:nth-of-type(2) { display: none; }
+/* ==========================================================================
+   상단 바의 아이콘 버튼 (메뉴 · 일시정지 · 소리) — 아이콘은 icons.js
+   ========================================================================== */
+#top button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+#top button i, .seedBox button i { font-style: normal; font-size: 16px; line-height: 1; color: #f6dfa0; }
+#pause, #soundBtn { min-width: 32px; padding-left: 7px; padding-right: 7px; }
+#soundBtn.muted i { color: #b9a688; }
+.seedBox button { display: flex; align-items: center; }
+.seedBox button i { font-size: 17px; }
+
+/* ==========================================================================
+   국가 정보 패널 (#left) — '보기' 상태에서 나라를 누르면 열린다 (game.js의 updateUI가 내용을 채운다).
+   정보와 이름 바꾸기만 있다. 나머지 기능은 모두 도구 막대에 있다.
+   ========================================================================== */
+#left { display: none; padding: 12px 12px 12px; }
+body.has-nation #left { display: block; animation: panelIn .16s ease-out; }
+@keyframes panelIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+.panelClose {
+  position: absolute; top: 7px; right: 7px; z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; border-radius: 50%;
+}
+.panelClose i { font-style: normal; font-size: 11px; line-height: 1; color: #f6dfa0; }
+#left .ic { color: #f6dfa0; }
+
+.nHead { display: flex; align-items: center; gap: 10px; margin: 0 28px 9px 0; }
+.nFlag { /* 나라(동맹) 색의 방패 */
+  flex: 0 0 26px; height: 32px; border-radius: 4px 4px 13px 13px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .5), inset 0 3px rgba(255, 255, 255, .28), inset 0 -8px 10px rgba(0, 0, 0, .22), 0 2px 6px rgba(0, 0, 0, .5);
+}
+.nTitle { min-width: 0; }
+#nationName { font-size: 14px; font-weight: 800; line-height: 1.25; color: var(--gold-bright); overflow-wrap: anywhere; }
+.nSub { margin-top: 2px; font-size: 10px; color: var(--muted); }
+.nLine { display: flex; align-items: flex-start; gap: 6px; margin: 3px 0; font-size: 10.5px; }
+.nLine .ic { flex: 0 0 auto; font-size: 14px; margin-top: 1px; }
+.nLine b { color: var(--gold-bright); }
+.nGrid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; margin: 9px 0 4px; padding: 4px 9px;
+  background: rgba(0, 0, 0, .25); border: 1px solid rgba(206, 168, 96, .18); border-radius: 6px;
+}
+.nGrid .stat { padding: 3px 0; white-space: nowrap; }
+.nGrid .stat:nth-last-child(-n+2) { border-bottom: 0; }
+.nNote { margin: 3px 0 7px; font-size: 10px; color: var(--muted); }
+.nLabel { margin: 10px 0 4px; font-size: 10px; letter-spacing: 1px; color: var(--gold); }
+.meter { display: grid; grid-template-columns: 36% 1fr 24px; align-items: center; gap: 7px; margin: 5px 0; font-size: 10.5px; }
+.meter > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meter .bar { height: 7px; border-radius: 4px; background: rgba(0, 0, 0, .42); box-shadow: inset 0 0 0 1px rgba(206, 168, 96, .22); overflow: hidden; }
+.meter .bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #5f9d58, #b9e08c); transition: width .3s ease; }
+.meter.bad .bar i { background: linear-gradient(90deg, #cf8f3e, #e25a4c); }
+.meter b { text-align: right; color: var(--gold-bright); }
+.meter em { grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; margin-top: -2px; font-style: normal; font-size: 10px; color: #ffb44a; }
+.meter em .ic { font-size: 13px; }
+.demo { display: flex; height: 7px; border-radius: 4px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .45); }
+.demo i { display: block; min-width: 2px; }
+.demo .c1 { background: #8fc4e0; } .demo .c2 { background: #dcb35c; } .demo .c3 { background: #9c8770; }
+.nRes { display: flex; flex-wrap: wrap; gap: 4px; }
+.nRes > span {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 5px; font-size: 10.5px;
+  background: rgba(0, 0, 0, .28); border: 1px solid rgba(206, 168, 96, .24); border-radius: 11px;
+}
+.nRes .ic { font-size: 14px; }
+.nFoot { margin: 9px 0 0; padding-top: 7px; border-top: 1px solid rgba(206, 168, 96, .2); line-height: 1.5; }
+.renameRow { display: flex; flex-direction: column; gap: 4px; margin-top: 9px; }
+.renameRow input { margin: 0; }
+
+/* 조작법 창의 지도 색 안내 */
+.helpLegend { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+.helpLegend .legend { margin: 0; font-size: inherit; color: var(--ink); }
+.helpLegend .dot { display: inline-block; width: 11px; height: 11px; }
 
 /* 알림은 화면 위쪽에 (아래는 도구 막대 자리) */
 #toast { top: 62px; bottom: auto; transform: translateX(-50%) translateY(-10px); }
@@ -513,7 +608,7 @@ canvas.power { cursor: crosshair; }
 /* ==========================================================================
    모바일 레이아웃 (900px 이하: 휴대폰 · 태블릿 세로 · 좁은 창)
    - 상단 바: 자주 쓰는 것만 남긴다. 새 게임 · 저장 · 불러오기는 ☰ 메뉴 안에 있다.
-   - 좌우 패널: 평소엔 숨기고 도구 막대 양 끝의 '시야' · '역사' 버튼으로 하나씩 연다. 지도를 가리지 않는다. (mobile-ui.js)
+   - 패널: 국가 정보는 나라를 누르면, 세계의 역사는 도구 막대 끝의 '역사' 탭으로 아래 서랍처럼 열린다. 한 번에 하나만. (mobile-ui.js)
    - 600px 이하(휴대폰 세로)는 상단 바를 두 줄로, 세로가 짧은 가로 화면은 패널을 옆 서랍으로.
    ========================================================================== */
 @media (max-width: 900px) {
@@ -526,14 +621,14 @@ canvas.power { cursor: crosshair; }
     overflow-x: auto; white-space: nowrap; scrollbar-width: none;
   }
   #top::-webkit-scrollbar { display: none; }
-  #top .logo-area, #newWorld, #save, #load { display: none; }
+  #top .logo-area, #top #newWorld, #top #save, #top #load { display: none; }
   #top button { flex-shrink: 0; min-height: 40px; padding: 6px 11px; font-size: 12px; }
   #top .speed { min-width: 40px; }
   #year { min-width: 0; padding: 0 6px; font-size: 15px; white-space: nowrap; }
   #stats { font-size: 11px; padding-right: 4px; }
   #help { display: none !important; }
 
-  /* --- 도구 막대: 화면 아래에 꽉 차게. 양 끝에 패널 버튼(시야 · 역사)이 나타난다 --- */
+  /* --- 도구 막대: 화면 아래에 꽉 차게. 끝에 '역사' 탭이 나타난다 --- */
   #dock { position: fixed; left: 0; right: 0; bottom: 0; transform: none; z-index: 16; max-width: none; gap: 0; align-items: stretch; }
   #dockTabs {
     gap: 0; padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
@@ -547,13 +642,17 @@ canvas.power { cursor: crosshair; }
   .dkTool { flex: 0 0 74px; height: 68px; font-size: 11px; }
   .dkTool i { font-size: 30px; }
   #dockHint { align-self: center; margin-bottom: 8px; font-size: 12px; padding: 5px 6px 5px 14px; }
-  #dockHintClose { width: 30px; height: 30px; font-size: 12px; }
+  #dockHint { max-width: 96vw; }
+  #dockHint em { max-width: 30vw; }
+  #dockHintClose { width: 30px; height: 30px; }
+  #dockHintClose i { font-size: 12px; }
+  .dkSep { margin: 9px 2px; }
 
-  /* --- 좌우 패널 → 아래 서랍 (탭을 눌러야 열림) --- */
+  /* --- 패널 → 도구 막대 바로 위의 서랍. --dock-h(도구 막대 높이)는 mobile-ui.js가 잰다 --- */
   #left, #right {
-    display: none; position: fixed;
-    top: auto; left: 0; right: 0; bottom: calc(56px + env(safe-area-inset-bottom, 0px));
-    width: auto; height: auto; max-height: min(50dvh, 440px);
+    position: fixed;
+    top: auto; left: 0; right: 0; bottom: var(--dock-h, calc(56px + env(safe-area-inset-bottom, 0px)));
+    width: auto; height: auto; max-height: min(52dvh, 460px);
     z-index: 15; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
     padding: 12px 14px 14px;
     padding-left: calc(14px + env(safe-area-inset-left, 0px));
@@ -562,17 +661,31 @@ canvas.power { cursor: crosshair; }
     box-shadow: 0 -8px 32px rgba(0, 0, 0, .6);
     font-size: 12px;
   }
-  body.mp-left #left, body.mp-right #right { display: block; animation: mpUp .16s ease-out; }
+  #right { display: none; }
+  body.has-nation #left, body.mp-right #right { display: block; animation: mpUp .16s ease-out; }
+  .panelClose { top: 9px; right: 10px; width: 34px; height: 34px; }
+  .panelClose i { font-size: 14px; }
+  .nHead { margin-right: 40px; }
+  .nFlag { flex-basis: 30px; height: 37px; }
+  #nationName { font-size: 16px; }
+  .nSub, .nNote, .nLabel, .meter em { font-size: 11px; }
+  .nLine, .meter, .nRes > span { font-size: 12px; }
+  .nGrid { grid-template-columns: repeat(4, 1fr); gap: 0 14px; padding: 5px 10px; }
+  .nGrid .stat { flex-direction: column; align-items: flex-start; gap: 0; padding: 4px 0; border-bottom: 0; color: var(--muted); font-size: 11px; }
+  .nGrid .stat b { font-size: 14px; }
+  .meter { grid-template-columns: 28% 1fr 28px; margin: 7px 0; }
+  .meter .bar, .demo { height: 8px; }
+  .renameRow { flex-direction: row; gap: 6px; }
+  .renameRow input { flex: 1; min-width: 0; }
+  .renameRow button { flex: 0 0 auto; }
   .panel h3 { font-size: 13px; }
   .panel h4 { font-size: 11px; margin-top: 12px; }
   .legend { font-size: 11px; }
   .small { font-size: 11px; }
   .log { font-size: 12px; padding: 6px 8px; }
   .stat { padding: 4px 0; }
-  .actionGrid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .actionGrid button { min-height: 40px; padding: 6px 4px; font-size: 12px; }
-  .panel select, .panel input, #renameBtn { min-height: 40px; margin-bottom: 6px; }
-  #nationName { font-size: 15px; }
+  .panel select, .panel input, #renameBtn { min-height: 40px; }
+  #top button i { font-size: 19px; }
 
   /* --- 알림은 위쪽에 (아래는 탭과 서랍 자리) --- */
   #toast {
@@ -620,7 +733,18 @@ canvas.power { cursor: crosshair; }
   #pause { flex: 0 0 42px; padding: 6px 0; }
   #top .speed { flex: 1 1 0; min-width: 0; padding: 6px 2px; }
   #addNation { flex: 0 1 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+  #homeBtn { padding: 6px 10px; }
   #toast { top: calc(108px + env(safe-area-inset-top, 0px)); }
+  /* 도구 칸: 옆으로 밀지 않아도 다 보이게 한 줄에 4개씩 */
+  #dockTray.open { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 9px 10px; }
+  .dkTool { height: 66px; padding: 3px 2px; }
+  .dkTool i { font-size: 26px; }
+  .dkTool span { font-size: 10.5px; line-height: 1.12; letter-spacing: 0; }
+  .dkSep { display: none; }
+  /* 탭 너비는 글자 길이에 맞춘다 (언어에 따라 '외교'가 'Дипломатия'처럼 길어진다) */
+  .dkTab { flex: 1 1 auto; padding: 3px 3px; }
+  .dkTab span { font-size: 9.5px; letter-spacing: 0; }
+  #dockHint { border-radius: 18px; }
 }
 
 /* 휴대폰 가로(세로가 짧음): 패널을 좌우 서랍으로, 도구 막대는 가운데 작게 */
@@ -631,17 +755,18 @@ canvas.power { cursor: crosshair; }
   .dkTab i { font-size: 22px; }
   .dkTab.active { box-shadow: none; }
   #dockTray { border-width: 1px; border-radius: 12px; padding: 5px; gap: 5px; }
-  .dkTool { flex: 0 0 68px; height: 56px; font-size: 10px; }
-  .dkTool i { font-size: 25px; }
+  .dkTool { flex: 0 0 70px; height: 58px; font-size: 10px; }
+  .dkTool i { font-size: 22px; }
   #dockHint { margin-bottom: 0; }
   #left, #right {
-    top: calc(64px + env(safe-area-inset-top, 0px)); bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+    top: calc(64px + env(safe-area-inset-top, 0px)); bottom: calc(60px + env(safe-area-inset-bottom, 0px));
     width: min(46vw, 340px); max-height: none; padding: 10px 12px;
     border-radius: 8px; border-top-width: 1px; box-shadow: 0 10px 30px rgba(0, 0, 0, .6);
   }
   #left { left: calc(6px + env(safe-area-inset-left, 0px)); right: auto; }
   #right { right: calc(6px + env(safe-area-inset-right, 0px)); left: auto; }
-  .actionGrid { grid-template-columns: 1fr 1fr; }
+  .nGrid { grid-template-columns: 1fr 1fr; }
+  .nGrid .stat { flex-direction: row; align-items: baseline; justify-content: space-between; }
 }
 /* 세로가 짧은 화면(가로로 눕힌 휴대폰)의 홈 화면 · 대화상자 */
 @media (max-width: 900px) and (max-height: 520px) {
@@ -672,7 +797,7 @@ canvas.power { cursor: crosshair; }
   #top .logo-area { display: none; }
   #help { display: none; }
   #top button { min-height: 32px; padding: 4px 11px; }
-  .actionGrid button { min-height: 30px; }
+  .panelClose { width: 28px; height: 28px; }
 }
 
 /* 터치 기기 */
@@ -681,6 +806,7 @@ canvas.power { cursor: crosshair; }
   input, select, textarea { font-size: calc(16px / var(--ui)); }
   .optRow input[type="range"], .setRow input[type="range"] { min-height: 32px; }
   button, a, label, .mapCard { -webkit-tap-highlight-color: transparent; }
+  canvas.power { cursor: default; }
 }
 /* 마우스가 없는 기기: 누른 뒤에도 hover 모양이 남는 것을 막고, 누르는 순간만 밝게 */
 @media (hover: none) {

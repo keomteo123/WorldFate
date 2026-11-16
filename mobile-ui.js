@@ -1,27 +1,36 @@
-// 좁은 화면(900px 이하)의 좌우 패널: 도구 막대 양 끝의 '시야' · '역사' 버튼으로 아래 서랍처럼 열고 닫는다.
-// 모양은 styles.css의 '모바일 레이아웃' 구역이 맡고, 여기서는 body의 mp-left / mp-right 클래스만 바꾼다.
+// 좁은 화면(900px 이하)의 서랍 관리. 아래에서 올라오는 것이 셋이라 서로 겹치지 않게 한 번에 하나만 연다:
+//   국가 정보(#left, 나라를 누르면 열림) · 세계의 역사(#right, 도구 막대의 '역사' 탭) · 도구 칸(#dockTray, powers.js)
+// 모양은 styles.css의 '모바일 레이아웃' 구역이 맡고, 여기서는 body의 mp-right 클래스와 도구 막대 높이(--dock-h)만 다룬다.
 (() => {
   const body = document.body;
-  const tabs = [...document.querySelectorAll('#dockTabs [data-mp]')];
+  const tab = document.querySelector('#dockTabs [data-mp="right"]');
   const narrow = window.matchMedia('(max-width: 900px)');
 
-  const current = () => body.classList.contains('mp-left') ? 'left' : body.classList.contains('mp-right') ? 'right' : null;
-  function set(side) { // 'left' | 'right' | null(닫기). 한 번에 하나만 연다.
-    body.classList.toggle('mp-left', side === 'left');
-    body.classList.toggle('mp-right', side === 'right');
-    tabs.forEach(b => b.classList.toggle('active', b.dataset.mp === side));
-    if (side) window.dispatchEvent(new Event('wf:panel-open')); // 권능 칸과 자리가 겹치므로 닫게 한다 (powers.js)
+  function setHistory(open) {
+    body.classList.toggle('mp-right', open);
+    tab.classList.toggle('active', open);
+    if (open) {
+      if (narrow.matches) window.WFGame.select(-1);      // 국가 정보와 자리가 겹친다
+      window.dispatchEvent(new Event('wf:panel-open')); // 도구 칸을 닫게 한다 (powers.js)
+    }
   }
-  window.WFPanels = { close: () => set(null) };
+  // 도구 칸을 열 때 powers.js가 부른다: 좁은 화면에서는 서랍을 모두 닫아 지도를 비운다
+  window.WFPanels = {
+    close() {
+      setHistory(false);
+      if (narrow.matches) window.WFGame.select(-1);
+    }
+  };
 
-  tabs.forEach(b => b.addEventListener('click', () => set(current() === b.dataset.mp ? null : b.dataset.mp)));
+  tab.addEventListener('click', () => setHistory(!body.classList.contains('mp-right')));
 
-  // 지도에서 국가를 누르면(살펴보기) 그 나라 정보가 있는 패널을 바로 보여 준다.
-  window.addEventListener('wf:select', () => {
-    if (!narrow.matches) return;
-    set('left');
-    const panel = document.getElementById('left');
-    const head = document.getElementById('selectedBox').previousElementSibling; // '선택한 국가' 제목
-    requestAnimationFrame(() => { panel.scrollTop = head.offsetTop - 8; });
-  });
+  // 나라를 눌러 국가 정보가 열리면 역사 서랍은 닫는다
+  window.addEventListener('wf:select', e => { if (e.detail && e.detail.id >= 0 && narrow.matches) setHistory(false); });
+
+  // 서랍은 도구 막대 바로 위에 붙는다. 도구 칸이 열리고 닫히면 높이가 바뀌므로 그때마다 알려 준다.
+  const dock = document.getElementById('dock');
+  const measure = () => document.documentElement.style.setProperty('--dock-h', dock.offsetHeight + 'px');
+  if (window.ResizeObserver) new ResizeObserver(measure).observe(dock);
+  window.addEventListener('resize', measure);
+  measure();
 })();

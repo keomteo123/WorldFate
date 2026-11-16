@@ -19,7 +19,11 @@
 
   function syncButton() {
     const b = document.getElementById('soundBtn');
-    if (b) b.textContent = state.muted ? '🔇' : '🔊';
+    if (!b) return;
+    // 전용 아이콘(icons.js): 켜짐 = 소리 물결, 꺼짐 = 붉은 X
+    if (window.WFIcons) b.innerHTML = window.WFIcons.svg(state.muted ? 'soundOff' : 'soundOn');
+    else b.textContent = state.muted ? '×' : '♪';
+    b.classList.toggle('muted', state.muted);
   }
 
   function applyVolume() {

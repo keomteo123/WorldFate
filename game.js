@@ -9,7 +9,6 @@
     godPanel: document.getElementById('godPanel'),
     worldInfo: document.getElementById('worldInfo'),
     logs: document.getElementById('logs'),
-    relationTarget: document.getElementById('relationTarget'),
     modal: document.getElementById('modal'),
     nationInput: document.getElementById('nationInput'),
     nationIdeology: document.getElementById('nationIdeology'),
@@ -27,6 +26,16 @@
     set(patch) { Object.assign(rules, patch); try { localStorage.setItem(RULES_KEY, JSON.stringify(rules)); } catch (e) {} }
   };
   const tr = s => (window.WFI18n ? window.WFI18n.tr(s) : s);
+
+  // ===== 보기 설정 (도구 막대의 '보기' 탭에서 바꿈, 이 기기에 저장) =====
+  const VIEW_KEY = 'wf_view';
+  const view = { armies: true }; // armies: 군대(점)를 지도에 표시할지
+  try { Object.assign(view, JSON.parse(localStorage.getItem(VIEW_KEY)) || {}); } catch (e) {}
+  const viewChanged = () => window.dispatchEvent(new Event('wf:view')); // 도구 막대(powers.js)가 버튼 상태를 다시 맞춘다
+
+  // 연출(fx.js)과 아이콘(icons.js)은 없어도 게임이 돌아가게 감싼다
+  const fxAdd = (kind, x, y, opts) => (window.WFFx ? window.WFFx.add(kind, x, y, opts) : null);
+  const icon = name => (window.WFIcons ? window.WFIcons.svg(name) : '');
 
   // 기술 시대: 기술력이 문턱을 넘으면 시대가 바뀌고, 시대마다 인구·경제·군사가 눈에 띄게 달라진다
   const ERAS = [
@@ -80,15 +89,15 @@
     가톨릭: '#d9b84a', 개신교: '#5c86c7', 정교회: '#8b5ea8', 이슬람: '#3f9a5a', 불교: '#e0883a',
     힌두교: '#d9573a', 유교: '#b04a4a', 신토: '#e8e0d0', 토착신앙: '#8a7a5a', 유대교: '#4aa0d9', 도교: '#4bafa9'
   };
-  const RESOURCE_ICON = {
-    철: '⛓',
-    금: '⛏',
-    곡물: '🌾',
-    목재: '🌲',
-    석유: '🛢',
-    비단: '🧵',
-    보석: '💎',
-    낙농: '🐄'
+  const RESOURCE_ICON = { // icons.js의 아이콘 이름
+    철: 'resIron',
+    금: 'resGold',
+    곡물: 'resGrain',
+    목재: 'resWood',
+    석유: 'resOil',
+    비단: 'resSilk',
+    보석: 'resGem',
+    낙농: 'resDairy'
   };
 
   let W = window.innerWidth;
@@ -111,13 +120,13 @@
   let paused = false;
   let speed = 1;
   let selected = -1;
-  let targetId = -1;
   let layer = 'political';
   let accumulator = 0;
   let seed = Math.floor(Math.random() * 999999);
   let currentMap = { id: 'random', name: '랜덤 대륙', kind: 'procedural', style: 'continents', latAt: null };
   let initialNationCount = 14; // 세계 생성 시 국가 수 (반란으로 늘어나는 국가 수의 상한 계산용)
   let gameStarted = false; // 홈 화면의 배경 데모가 아니라 실제 게임이 시작됐는지
+  let worldEpoch = 0;      // 세계를 새로 만들거나 불러올 때마다 +1 (늦게 도착하는 운석이 엉뚱한 세계를 때리지 않게)
   let rng = mulberry32(seed);
   let needsClaimFix = false;
   let selectionBorder = [];
@@ -1206,12 +1215,15 @@
     year = sc ? sc.year : 1;
     provSpacing = sc ? sc.provSpacing : 38;
     selected = -1;
-    targetId = -1;
     selectionBorder = [];
     selectionPath = null;
     armyUnits = [];
     warArrows = [];
     deathFx = [];
+    worldEpoch++;
+    setPowerPick(-1);
+    viewChanged();
+    if (window.WFFx) window.WFFx.clear();
     orderTimers.clear();
     needsClaimFix = false;
     baseDirty = true;
@@ -1243,12 +1255,17 @@
     updateUI();
   }
 
+  // 지도가 상단 바 · 아래 도구 막대 · (넓은 화면의) 양옆 패널에 가리지 않게 가운데에 맞춘다
   function fitCamera() {
-    const sideReserve = W > 900 ? 360 : 40; // 좌우 패널이 차지하는 폭
-    camera.zoom = Math.min((W - sideReserve) / MAP_W, (H - 110) / MAP_H);
+    const uiScale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui')) || 1;
+    const wide = W > 900;
+    const sideReserve = wide ? 358 * uiScale : 24;                 // 양옆 패널(국가 정보 · 세계의 역사) 폭. 패널이 지도 가장자리를 살짝만 덮는 정도
+    const topReserve = wide ? 58 * uiScale : (W > 600 ? 62 : 106); // 상단 바 (휴대폰 세로는 두 줄)
+    const bottomReserve = wide ? 74 * uiScale : 64;                // 도구 막대
+    camera.zoom = Math.min((W - sideReserve) / MAP_W, (H - topReserve - bottomReserve - 12) / MAP_H);
     camera.zoom = Math.max(0.45, Math.min(1.8, camera.zoom));
     camera.x = (W - MAP_W * camera.zoom) / 2;
-    camera.y = (H - MAP_H * camera.zoom) / 2 + 20;
+    camera.y = topReserve + (H - topReserve - bottomReserve - MAP_H * camera.zoom) / 2;
   }
 
   // ===== 고지도(양피지) 스타일 렌더링 =====
@@ -1589,6 +1606,10 @@
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
+    const fx = window.WFFx;
+    const sh = fx ? fx.shake() : null; // 지진 · 운석 등: 지도 전체가 잠깐 흔들린다
+    if (sh) { ctx.save(); ctx.translate(sh.x, sh.y); }
+
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(worldCanvas, camera.x, camera.y, MAP_W * camera.zoom, MAP_H * camera.zoom);
@@ -1600,6 +1621,10 @@
     drawFlags();
     drawArmyMarkers();
     if (selected >= 0 && nations[selected]?.alive) drawSelection();
+    drawPowerPick();
+    if (fx) fx.draw(ctx, camera, W, H); // 재해 · 권능 연출 (fx.js)
+    if (sh) ctx.restore();
+    drawAim();
     requestAnimationFrame(draw);
   }
 
@@ -1943,6 +1968,7 @@
   }
 
   // 군대는 점의 수로 보인다. 땅 위는 점, 바다 위는 사각형. 교전 중인 점은 붉게 깜빡이고, 쓰러진 자리엔 잠깐 붉은 고리가 남는다.
+  // (지진 · 태풍 같은 재해 연출은 fx.js가 그린다)
   function drawArmyMarkers() {
     if (camera.zoom < 0.3) return;
     const t = performance.now() / 1000;
@@ -1950,44 +1976,11 @@
 
     ctx.save();
     for (const fx of deathFx) {
+      if (!fx.kind && !view.armies) continue; // 군대를 숨기면 쓰러진 자리의 고리도 숨긴다
       const sx = camera.x + fx.x * camera.zoom;
       const sy = camera.y + fx.y * camera.zoom;
       if (sx < -60 || sy < -60 || sx > W + 60 || sy > H + 60) continue;
       ctx.beginPath();
-      if (fx.kind === 'quake' || fx.kind === 'volcano') { // 지진·화산: 땅이 갈라지듯 번지는 고리
-        const k = clamp(fx.t / fx.d, 0, 1), z = camera.zoom;
-        const col = fx.kind === 'quake' ? '120,72,34' : '220,90,30';
-        for (let i = 0; i < 3; i++) {
-          const kk = clamp(1 - k - i * 0.14, 0, 1);
-          if (kk <= 0) continue;
-          ctx.beginPath();
-          ctx.strokeStyle = `rgba(${col},${(1 - kk) * 0.9})`;
-          ctx.lineWidth = Math.max(1.5, 3 * z);
-          const r = (4 + kk * 42) * z, jag = 2.2 * z;
-          for (let a = 0; a <= 24; a++) {
-            const ang = a / 24 * Math.PI * 2, rr = r + ((a % 2) ? jag : -jag) * (0.4 + kk);
-            const px = sx + Math.cos(ang) * rr, py = sy + Math.sin(ang) * rr;
-            a ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
-          }
-          ctx.stroke();
-        }
-        if (fx.kind === 'volcano') { ctx.beginPath(); ctx.fillStyle = `rgba(230,100,30,${k * 0.45})`; ctx.arc(sx, sy, 10 * z, 0, Math.PI * 2); ctx.fill(); }
-        continue;
-      }
-      if (fx.kind === 'storm') { // 폭풍: 소용돌이치는 구름
-        const k = clamp(fx.t / fx.d, 0, 1), z = camera.zoom, spin = performance.now() / 380;
-        ctx.fillStyle = `rgba(90,110,140,${k * 0.22})`;
-        ctx.arc(sx, sy, 34 * z, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.lineWidth = Math.max(1.5, 2.6 * z);
-        ctx.strokeStyle = `rgba(235,242,250,${Math.min(1, k * 1.4) * 0.9})`;
-        for (let i = 0; i < 4; i++) {
-          ctx.beginPath();
-          ctx.arc(sx, sy, (8 + i * 7) * z, spin + i * 1.6, spin + i * 1.6 + 1.7);
-          ctx.stroke();
-        }
-        continue;
-      }
       if (fx.kind === 'rebel') { // 반란: 금빛 고리가 넓게 퍼진다
         const k = clamp(fx.t / 2.4, 0, 1);
         ctx.strokeStyle = `rgba(232,170,40,${k})`;
@@ -2000,6 +1993,7 @@
       }
       ctx.stroke();
     }
+    if (!view.armies) { ctx.restore(); return; } // '보기 → 군대 표시'를 껐을 때
 
     ctx.lineWidth = 1.1;
     for (const u of armyUnits) {
@@ -2055,29 +2049,26 @@
     }
   }
 
-  // 선택한 국가의 외곽선을 하나의 Path2D로 만든다 (칸마다 그림자 효과로 그리던 방식은 후반에 매우 느렸음)
-  function computeSelectionBorder() {
-    selectionBorder = [];
-    selectionPath = null;
-    if (selected < 0) return;
+  // 한 나라의 외곽선을 하나의 Path2D로 만든다 (칸마다 그림자 효과로 그리던 방식은 후반에 매우 느렸음)
+  function nationBorderPath(id) {
     const path = new Path2D();
-    const provs = provinces.filter(p => p.owner === selected || (p.capture && (p.capture.to === selected || p.capture.from === selected)));
+    const provs = provinces.filter(p => p.owner === id || (p.capture && (p.capture.to === id || p.capture.from === id)));
     for (const p of provs) {
       for (const c of p.cells) {
-        if (owner[c] !== selected) continue;
+        if (owner[c] !== id) continue;
         const x = c % MAP_W, y = (c - x) / MAP_W;
-        const l = x === 0 || owner[c - 1] !== selected;
-        const r = x === MAP_W - 1 || owner[c + 1] !== selected;
-        const u = y === 0 || owner[c - MAP_W] !== selected;
-        const d = y === MAP_H - 1 || owner[c + MAP_W] !== selected;
-        if (l) { path.moveTo(x, y); path.lineTo(x, y + 1); }
-        if (r) { path.moveTo(x + 1, y); path.lineTo(x + 1, y + 1); }
-        if (u) { path.moveTo(x, y); path.lineTo(x + 1, y); }
-        if (d) { path.moveTo(x, y + 1); path.lineTo(x + 1, y + 1); }
-        if (l || r || u || d) selectionBorder.push(x, y);
+        if (x === 0 || owner[c - 1] !== id) { path.moveTo(x, y); path.lineTo(x, y + 1); }
+        if (x === MAP_W - 1 || owner[c + 1] !== id) { path.moveTo(x + 1, y); path.lineTo(x + 1, y + 1); }
+        if (y === 0 || owner[c - MAP_W] !== id) { path.moveTo(x, y); path.lineTo(x + 1, y); }
+        if (y === MAP_H - 1 || owner[c + MAP_W] !== id) { path.moveTo(x, y + 1); path.lineTo(x + 1, y + 1); }
       }
     }
-    selectionPath = path;
+    return path;
+  }
+
+  function computeSelectionBorder() {
+    selectionBorder = [];
+    selectionPath = selected < 0 ? null : nationBorderPath(selected);
   }
 
   function drawSelection() {
@@ -2103,16 +2094,19 @@
     return idx(x, y);
   }
 
+  // 국가 선택을 바꾼다 (-1이면 해제). 선택한 나라가 있으면 국가 정보 패널(#left)이 열린다.
+  function setSelected(id) {
+    selected = id >= 0 && nations[id]?.alive ? id : -1;
+    computeSelectionBorder();
+    updateUI();
+    window.dispatchEvent(new CustomEvent('wf:select', { detail: { id: selected } })); // 좁은 화면: 겹치는 다른 서랍을 닫는다 (mobile-ui.js)
+  }
+
   function selectAt(sx, sy) {
     const i = screenToCell(sx, sy);
     if (i < 0) return;
     const id = owner[i];
-    if (id >= 0 && nations[id]?.alive) {
-      selected = id;
-      computeSelectionBorder();
-      updateUI();
-      window.dispatchEvent(new CustomEvent('wf:select')); // 모바일: 선택하면 국가 패널을 연다 (mobile-ui.js)
-    }
+    if (id >= 0 && nations[id]?.alive) setSelected(id);
   }
 
   function updateUI() {
@@ -2121,45 +2115,58 @@
     const box = ui.selectedBox;
     const panel = ui.godPanel;
 
-    if (selected < 0 || !nations[selected]?.alive) {
-      setHTML(box, '<div class="small">국가를 클릭하세요.</div>');
+    // 국가 정보 패널: 나라를 선택했을 때만 보인다 (styles.css의 body.has-nation)
+    const has = selected >= 0 && !!nations[selected]?.alive;
+    document.body.classList.toggle('has-nation', has);
+    if (!has) {
+      setHTML(box, '');
       panel.style.display = 'none';
     } else {
       const n = nations[selected];
       const group = getNationGroup(n);
       panel.style.display = 'block';
       const relationWars = wars.filter(w => w.a === n.id || w.b === n.id).length;
+      const unrest = n.unrest || 0;
+      const d = n.demographics;
+      const colonies = coloniesOf(n.id);
+      const capital = n.cities.find(c => c.capital);
+      const meter = (label, v, tone, note = '') =>
+        `<div class="meter ${tone}"><span>${label}</span><div class="bar"><i style="width:${clamp(v, 0, 100).toFixed(0)}%"></i></div><b>${v.toFixed(0)}</b>${note}</div>`;
+      const topRes = Object.entries(computeNationResources(n)).sort((x, y) => y[1] - x[1]).slice(0, 3);
       setHTML(box, `
-        <div style="margin-bottom:10px">
-          <span id="flag" style="background:${getGroupColorForNation(n)};color:#fff">⚑</span>
-          <span id="nationName">${escapeHTML(getDisplayNationName(n))}</span>
+        <div class="nHead">
+          <span class="nFlag" style="background:${getGroupColorForNation(n)}"></span>
+          <div class="nTitle">
+            <div id="nationName">${escapeHTML((isSubject(n) ? `[${colonyWord()}] ` : '') + n.name)}</div>
+            <div class="nSub">${escapeHTML(n.species)} · ${n.ideology} · ${eraOf(n).name}${n.isRebel ? ' · 반란군' : ''}</div>
+          </div>
         </div>
-        <div class="small">${n.species} · ${n.ideology}${n.isRebel ? ' · 반란군' : ''} ${group ? `· ${group.name}` : ''}</div>
-        ${isSubject(n) ? `<div class="small" style="margin:3px 0">🏴 종주국: <b>${escapeHTML(nations[n.overlordId].name)}</b></div>` : ''}
-        ${coloniesOf(n.id).length ? `<div class="small" style="margin:3px 0">🏴 ${colonyWord()}: ${coloniesOf(n.id).map(c => escapeHTML(c.name)).join(', ')}</div>` : ''}
-        <div class="small" style="margin:3px 0">🕊 ${escapeHTML(n.religion)} ${n.cities.some(c => c.holy) ? '· 성지 보유' : ''}</div>
-        <div class="stat">인구 <b>${format(n.population)}</b></div>
-        <div class="stat">영토 <b>${provinceCount(n.id)}</b></div>
-        <div class="stat">군대 <b>●${dotCountOf(n.id)}</b></div>
-        <div class="stat">골드 <b>${format(n.gold)}</b> ${n.tradeIncome > 0.5 ? `<span class="small">(무역 +${n.tradeIncome.toFixed(1)} / 비용 -${(n.tradeCost || 0).toFixed(1)})</span>` : ''}</div>
-        <div class="stat">기술력 <b>${n.tech.toFixed(1)}</b> <span class="small">· ${eraOf(n).name}</span></div>
-        <div class="stat">안정도 <b>${n.stability.toFixed(0)}</b></div>
-        <div class="stat">불안도 <b>${(n.unrest || 0).toFixed(0)}</b>${(n.unrest || 0) > 45 ? ' <span class="small">⚠ 반란 위험</span>' : ''}</div>
-        <div class="stat">행복도 <b>${n.happiness.toFixed(0)}</b></div>
-        <div class="stat">도시 <b>${n.cities.length}</b></div>
-        <div class="stat">국력 <b>${n.power.toFixed(0)}</b></div>
-        <div class="stat">전쟁 <b>${relationWars}</b></div>
-        <div class="small" style="margin-top:6px">인구 구성 · 아동 ${(n.demographics.children * 100).toFixed(0)}% · 성인 ${(n.demographics.adults * 100).toFixed(0)}% · 노년 ${(n.demographics.elders * 100).toFixed(0)}%</div>
-        <div class="small" style="margin-top:6px">주요 자원: ${Object.entries(computeNationResources(n)).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([r, v]) => `${RESOURCE_ICON[r]}${r}`).join(' · ')}</div>
-        <div class="small" style="margin-top:8px">국가 나이: ${n.age}년<br>수도: ${escapeHTML(n.cities.find(c => c.capital)?.name || '없음')}</div>
+        ${group ? `<div class="nLine">${icon('union')}<span>${escapeHTML(group.name)}</span></div>` : ''}
+        ${isSubject(n) ? `<div class="nLine">${icon('fate')}<span>종주국: <b>${escapeHTML(nations[n.overlordId].name)}</b></span></div>` : ''}
+        ${colonies.length ? `<div class="nLine">${icon('colonize')}<span>${colonyWord()}: ${colonies.map(c => escapeHTML(c.name)).join(', ')}</span></div>` : ''}
+        <div class="nLine">${icon('temple')}<span>${escapeHTML(n.religion)}${n.cities.some(c => c.holy) ? ' · 성지 보유' : ''}</span></div>
+        <div class="nGrid">
+          <div class="stat">인구 <b>${format(n.population)}</b></div>
+          <div class="stat">영토 <b>${provinceCount(n.id)}</b></div>
+          <div class="stat">군대 <b>●${dotCountOf(n.id)}</b></div>
+          <div class="stat">골드 <b>${format(n.gold)}</b></div>
+          <div class="stat">도시 <b>${n.cities.length}</b></div>
+          <div class="stat">전쟁 <b>${relationWars}</b></div>
+          <div class="stat">국력 <b>${n.power.toFixed(0)}</b></div>
+          <div class="stat">기술력 <b>${n.tech.toFixed(1)}</b></div>
+        </div>
+        ${n.tradeIncome > 0.5 ? `<div class="nNote">(무역 +${n.tradeIncome.toFixed(1)} / 비용 -${(n.tradeCost || 0).toFixed(1)})</div>` : ''}
+        ${meter('안정도', n.stability, 'good')}
+        ${meter('행복도', n.happiness, 'good')}
+        ${meter('불안도', unrest, 'bad', unrest > 45 ? `<em>${icon('warn')}<span>반란 위험</span></em>` : '')}
+        <div class="nLabel">인구 구성</div>
+        <div class="demo"><i class="c1" style="flex:${d.children.toFixed(3)}"></i><i class="c2" style="flex:${d.adults.toFixed(3)}"></i><i class="c3" style="flex:${d.elders.toFixed(3)}"></i></div>
+        <div class="nNote">아동 ${(d.children * 100).toFixed(0)}% · 성인 ${(d.adults * 100).toFixed(0)}% · 노년 ${(d.elders * 100).toFixed(0)}%</div>
+        <div class="nLabel">주요 자원</div>
+        <div class="nRes">${topRes.map(([r]) => `<span>${icon(RESOURCE_ICON[r])}<span>${r}</span></span>`).join('')}</div>
+        <div class="nNote nFoot">국가 나이: ${n.age}년 · 수도: ${escapeHTML(capital?.name || '없음')}</div>
       `);
     }
-
-    const select = ui.relationTarget;
-    const options = nations.filter(n => n.alive && n.id !== selected).map(n => `<option value="${n.id}">${escapeHTML(getDisplayNationName(n))}</option>`).join('');
-    setHTML(select, `<option value="-1">대상 선택</option>${options}`);
-    if (targetId >= 0 && nations[targetId]?.alive) select.value = String(targetId);
-    else targetId = -1;
 
     const info = ui.worldInfo;
     const alive = nations.filter(n => n.alive);
@@ -2255,7 +2262,7 @@
       }
     }
     alliances = alliances.filter(g => g !== group);
-    logEvent(`${group.name} 동맹이 해체되었습니다.`, 'bad');
+    logEvent(/동맹$/.test(group.name) ? `${group.name}이 해체되었습니다.` : `${group.name} 동맹이 해체되었습니다.`, 'bad'); // 이름이 이미 '…동맹'으로 끝나면 겹쳐 쓰지 않는다
     renderWorld();
     updateUI();
   }
@@ -2813,7 +2820,8 @@
   }
 
   // at({x, y})을 주면 그 자리에서 일어난다 (신의 권능으로 지도를 직접 눌렀을 때). 없으면 그 나라의 아무 구역.
-  function disaster(kind, n, at) {
+  // quiet: 연출은 이미 띄웠으니 다시 띄우지 않는다 (운석은 떨어지는 모습이 먼저 나오고, 땅에 닿을 때 피해를 준다)
+  function disaster(kind, n, at, quiet) {
     if (!n || !n.alive) return;
     const p = at || randomProvinceOf(n, kind === 'storm');
     if (!p) return;
@@ -2828,18 +2836,15 @@
       hurt(rand(0.03, 0.12), irand(30, 120), irand(3, 9));
       damageCities(n, x, y, 45, 0.6);
       killDotsNear(x, y, 40, 2);
-      deathFx.push({ x, y, t: 4.5, d: 4.5, kind: 'quake' });
       logEvent(`${n.name}에 규모 ${rand(6, 8.8).toFixed(1)}의 지진이 발생했다. 도시가 무너지고 많은 사람이 숨졌다.`, 'bad');
     } else if (kind === 'storm') {
       hurt(rand(0.01, 0.05), irand(20, 90), irand(2, 6));
       n.army = Math.max(1, n.army * 0.96);
       damageCities(n, x, y, 40, 0.25);
       killDotsNear(x, y, 60, 3);
-      deathFx.push({ x, y, t: 5, d: 5, kind: 'storm' });
-      logEvent(`${n.name}에 거대한 폭풍이 몰아쳤다. 농작물과 항구가 큰 피해를 입었다.`, 'bad');
+      logEvent(`${n.name}에 거대한 태풍이 몰아쳤다. 농작물과 항구가 큰 피해를 입었다.`, 'bad');
     } else if (kind === 'flood') {
       hurt(rand(0.02, 0.07), irand(25, 90), irand(2, 7));
-      deathFx.push({ x, y, t: 4, d: 4, kind: 'storm' });
       logEvent(`${n.name}에 대홍수가 나 농경지가 물에 잠겼다.`, 'bad');
     } else if (kind === 'drought') {
       hurt(rand(0.03, 0.09), irand(20, 70), irand(3, 8));
@@ -2849,9 +2854,21 @@
       hurt(rand(0.03, 0.1), irand(30, 100), irand(4, 10));
       damageCities(n, x, y, 35, 0.5);
       killDotsNear(x, y, 30, 2);
-      deathFx.push({ x, y, t: 5, d: 5, kind: 'volcano' });
       logEvent(`${n.name}의 화산이 폭발해 잿빛 재가 하늘을 덮었다.`, 'bad');
-    }
+    } else if (kind === 'meteor') { // 좁은 범위를 아주 세게 때린다
+      hurt(rand(0.06, 0.16), irand(60, 200), irand(6, 14));
+      n.army = Math.max(1, n.army * 0.94);
+      damageCities(n, x, y, 34, 0.9);
+      damageCities(n, x, y, 16, 0.7); // 떨어진 자리 바로 곁의 도시는 한 단계 더 무너진다
+      killDotsNear(x, y, 34, 6);
+      logEvent(`${n.name}에 운석이 떨어졌다. 떨어진 자리 일대가 잿더미가 됐다.`, 'bad');
+    } else if (kind === 'lightning') { // 한 점만 정확히 때린다: 그 자리의 군대와 도시
+      hurt(rand(0.003, 0.012), irand(5, 25), irand(0, 2));
+      damageCities(n, x, y, 7, 0.6);
+      killDotsNear(x, y, 9, 2);
+      logEvent(`${n.name}에 벼락이 떨어졌다.`, 'bad');
+    } else return;
+    if (!quiet) fxAdd(kind, x, y);
     territoryDirty = true;
   }
 
@@ -3718,20 +3735,31 @@
   }
 
 
+  // 두 나라가 전쟁을 시작할 수 없는 까닭 ('ally' 같은 동맹 · 'atwar' 이미 전쟁 중). 시작할 수 있으면 null.
+  function warBlock(aId, bId) {
+    const ga = getNationGroup(nations[aId]);
+    if (ga && ga === getNationGroup(nations[bId])) return 'ally';
+    if (wars.some(w => (w.a === aId && w.b === bId) || (w.b === aId && w.a === bId))) return 'atwar';
+    return null;
+  }
+
+  // 이웃 나라 하나와 전쟁을 일으킨다. 상대의 id를 돌려준다 (일으킬 상대가 없으면 -1).
   function forceWar(id = selected) {
-    if (id < 0) return;
+    if (id < 0) return -1;
     const n = nations[id];
-    const ns = neighbors(id).filter(o => nations[o]?.alive);
+    const ns = neighbors(id).filter(o => nations[o]?.alive && !warBlock(id, o));
     if (!ns.length) {
       logEvent(`${n.name} 주변에 전쟁을 일으킬 국가가 없다.`, 'god');
-      return;
+      return -1;
     }
     const target = ns[irand(0, ns.length - 1)];
     forceWarBetween(id, target);
+    return target;
   }
 
+  // 그 나라가 벌이는 전쟁을 모두 멈춘다. 멈춘 전쟁이 있었으면 true.
   function forcePeace(id = selected) {
-    if (id < 0) return;
+    if (id < 0) return false;
     let changed = false;
     for (const w of wars.slice()) {
       if (w.a === id || w.b === id) {
@@ -3740,6 +3768,7 @@
       }
     }
     if (changed) logEvent(`${nations[id].name} 주변의 전쟁이 신의 힘으로 멈췄다.`, 'god');
+    return changed;
   }
 
   function collapseNation(n) {
@@ -3800,54 +3829,197 @@
     n.population = Math.max(1, Math.floor(n.population * 0.78));
     n.stability -= 15;
     n.army = Math.max(1, Math.floor(n.army * 0.9));
-    logEvent(`신의 역병이 ${n.name}을(를) 덮쳤다.`, 'bad');
+    logEvent(`신의 전염병이 ${n.name}을(를) 덮쳤다.`, 'bad');
   }
 
   // ===== 신의 권능 (아래 도구 막대, powers.js) =====
-  // 권능을 고른 뒤 지도를 누르면 국가를 선택하지 않아도 그 자리에 바로 발동한다. null이면 '살펴보기'(국가 선택).
+  // 권능을 고른 뒤 지도를 누르면 국가를 선택하지 않아도 그 자리에 바로 발동한다. null이면 '보기'(국가를 눌러 정보 확인).
+  // 권능을 더하려면: powers.js의 CATS에 한 줄, 여기 applyPower에 같은 id의 처리를 넣는다.
   let activePower = null;
   let pendingSpawn = null; // '국가 생성' 권능으로 고른 자리
-  const POWER_DISASTERS = { quake: 1, storm: 1, flood: 1, drought: 1, volcano: 1 };
+  const POWER_DISASTERS = { quake: 1, storm: 1, flood: 1, drought: 1, volcano: 1, meteor: 1, lightning: 1 };
   const POWER_BLESS = { popUp: 'pop', popDown: 'cursePop', armyUp: 'army', armyDown: 'curseArmy', goldUp: 'gold', goldDown: 'curseGold', techUp: 'tech', techDown: 'curseTech' };
+  const POWER_LABEL = { popUp: '인구 +10%', popDown: '인구 -10%', armyUp: '군대 +10%', armyDown: '군대 -10%', goldUp: '골드 +20%', goldDown: '골드 -20%', techUp: '기술 +10', techDown: '기술 -10' };
+  // 두 나라를 차례로 눌러 쓰는 외교 권능 (첫 번째로 누른 나라가 '하는 쪽')
+  const POWER_PAIR = { dipWar: 1, dipPeace: 1, dipAlly: 1, dipColonize: 1 };
+  // 조준 원의 반지름(지도 칸). 실제로 피해가 미치는 범위와 같게 둔다.
+  const POWER_RADIUS = { quake: 45, storm: 60, flood: 40, drought: 40, volcano: 35, meteor: 34, lightning: 9 };
 
-  // 결과: { ok, why } — why: 'outside'(지도 밖) · 'nation'(국가가 있어야 함) · 'land'(육지여야 함)
+  let powerPick = -1;                 // 외교 권능에서 먼저 고른 나라 (-1이면 아직 없음)
+  let pickPath = null, pickPathAt = 0;
+  function setPowerPick(id) {
+    powerPick = id;
+    pickPath = null;
+  }
+
+  const capitalPos = n => {
+    const c = n.capital || { x: n.seedX, y: n.seedY };
+    return { x: c.x + 0.5, y: c.y + 0.5 };
+  };
+  const linkFx = (a, b, tone) => { const pa = capitalPos(a), pb = capitalPos(b); fxAdd('link', pa.x, pa.y, { x2: pb.x, y2: pb.y, tone }); };
+
+  // a가 b를 식민지로 삼을 수 없는 까닭. 삼을 수 있으면 null. (까닭은 사건 기록에도 남긴다)
+  function colonizeBlock(ov, c) {
+    if (!rules.colonies) { logEvent('설정에서 식민지 시스템이 꺼져 있다.', 'bad'); return 'colOff'; }
+    if (isSubject(c) || isSubject(ov)) { logEvent('이미 종속 관계에 있는 나라는 식민지로 삼을 수 없다.', 'bad'); return 'subject'; }
+    if (findWar(ov.id, c.id) || !(ov.power >= c.power * 1.2 || ov.tech >= c.tech * 1.2)) {
+      logEvent(`${ov.name}은(는) ${c.name}을(를) ${colonyWord()}로 삼기에는 국력·기술 격차가 부족하다.`, 'bad');
+      return 'weak';
+    }
+    return null;
+  }
+
+  // 외교 권능: 먼저 누른 나라 a와 나중에 누른 나라 b 사이에 적용한다
+  function diplomacy(kind, a, b) {
+    if (kind === 'dipWar') {
+      const why = warBlock(a.id, b.id);
+      if (why) return { ok: false, why };
+      forceWarBetween(a.id, b.id);
+      linkFx(a, b, 'war');
+    } else if (kind === 'dipPeace') {
+      if (!makePeace(a.id, b.id)) return { ok: false, why: 'nowar' };
+      linkFx(a, b, 'peace');
+    } else if (kind === 'dipAlly') {
+      const ga = getNationGroup(a), gb = getNationGroup(b);
+      if (ga && ga === gb) return { ok: false, why: 'allied' };
+      if (ga && gb) return { ok: false, why: 'twoGroups' };
+      if ((ga || gb) && (ga || gb).members.length >= MAX_ALLIANCE_SIZE) return { ok: false, why: 'full' };
+      if (!createAllianceBetween(a.id, b.id)) return { ok: false, why: 'allied' };
+      linkFx(a, b, 'ally');
+    } else if (kind === 'dipColonize') {
+      const why = colonizeBlock(a, b);
+      if (why) return { ok: false, why };
+      makeColony(b, a, `${a.name}이(가) ${b.name}을(를) ${colonyWord()}로 삼았다.`);
+      linkFx(a, b, 'colony');
+    }
+    return { ok: true };
+  }
+
+  // 결과: { ok, why, step, name }
+  //  - why(실패한 까닭): 'outside' 지도 밖 · 'nation' 국가가 있어야 함 · 'land' 육지여야 함 · 그 밖은 powers.js의 FAIL 참고
+  //  - step(외교 권능): 1 = 첫 번째 나라를 골랐음(name) · 0 = 고른 것을 취소 · 2 = 두 나라에 적용함
   function applyPower(kind, sx, sy) {
     const i = screenToCell(sx, sy);
     if (i < 0) return { ok: false, why: 'outside' };
     const x = i % MAP_W, y = Math.floor(i / MAP_W);
     const id = owner[i];
     const n = id >= 0 && nations[id]?.alive ? nations[id] : null;
+    const at = { x: x + 0.5, y: y + 0.5 };
+    let res = { ok: true, name: n ? n.name : '' };
 
     if (kind === 'spawn') {
       if (!land[i]) return { ok: false, why: 'land' };
       pendingSpawn = { x, y };
       ui.modal.style.display = 'flex';
       ui.nationInput.focus();
-      return { ok: true };
+      return res;
     }
     if (POWER_DISASTERS[kind]) {
-      if (n) disaster(kind, n, { x: x + 0.5, y: y + 0.5 });
-      else { // 주인 없는 땅 · 바다: 피해를 입을 나라는 없지만 그 자리의 군대는 휩쓸린다
-        killDotsNear(x, y, kind === 'storm' ? 60 : 40, 3);
-        deathFx.push({ x: x + 0.5, y: y + 0.5, t: 4.5, d: 4.5, kind: kind === 'quake' ? 'quake' : kind === 'volcano' ? 'volcano' : 'storm' });
+      if (kind === 'meteor') { // 떨어지는 모습이 먼저 보이고, 땅에 닿는 순간 피해를 준다
+        fxAdd('meteor', at.x, at.y);
+        const epoch = worldEpoch;
+        setTimeout(() => {
+          if (epoch !== worldEpoch) return;
+          const o = owner[i], hit = o >= 0 && nations[o]?.alive ? nations[o] : null;
+          if (hit) disaster('meteor', hit, at, true);
+          else killDotsNear(x, y, POWER_RADIUS.meteor, 6);
+          updateUI();
+        }, window.WFFx ? window.WFFx.meteorDelay : 0);
+        return res;
       }
+      if (n) disaster(kind, n, at);
+      else { // 주인 없는 땅 · 바다: 피해를 입을 나라는 없지만 그 자리의 군대는 휩쓸린다
+        killDotsNear(x, y, POWER_RADIUS[kind], 3);
+        fxAdd(kind, at.x, at.y);
+      }
+    } else if (POWER_PAIR[kind]) {
+      if (!n) return { ok: false, why: 'nation', step: powerPick >= 0 ? 1 : 0 };
+      const first = powerPick >= 0 && nations[powerPick]?.alive ? nations[powerPick] : null;
+      if (!first) { setPowerPick(n.id); return { ok: true, step: 1, name: n.name }; }
+      if (first.id === n.id) { setPowerPick(-1); return { ok: true, step: 0 }; }
+      res = diplomacy(kind, first, n);
+      if (res.ok) { res.step = 2; setPowerPick(-1); }
+      else { res.step = 1; res.name = first.name; } // 안 되는 상대였으면 첫 번째 나라는 그대로 두고 다른 상대를 고르게 한다
     } else {
       if (!n) return { ok: false, why: 'nation' };
-      if (POWER_BLESS[kind]) bless(POWER_BLESS[kind], n);
-      else if (kind === 'plague') plagueNation(n);
-      else if (kind === 'forceWar') forceWar(n.id);
-      else if (kind === 'forcePeace') forcePeace(n.id);
-      else if (kind === 'collapse') { collapseNation(n); if (selected === n.id) selected = -1; }
-      else return { ok: false, why: 'outside' };
+      if (POWER_BLESS[kind]) {
+        bless(POWER_BLESS[kind], n);
+        fxAdd(/Up$/.test(kind) ? 'bless' : 'curse', at.x, at.y, { label: POWER_LABEL[kind] });
+      } else if (kind === 'plague') {
+        plagueNation(n);
+        fxAdd('plague', at.x, at.y);
+      } else if (kind === 'forceWar') {
+        const foe = forceWar(n.id);
+        if (foe < 0) return { ok: false, why: 'nofoe' };
+        linkFx(n, nations[foe], 'war');
+      } else if (kind === 'forcePeace') {
+        if (!forcePeace(n.id)) return { ok: false, why: 'nowars' };
+        fxAdd('bless', at.x, at.y);
+      } else if (kind === 'collapse') {
+        fxAdd('collapse', at.x, at.y);
+        collapseNation(n);
+        if (selected === n.id) selected = -1;
+      } else if (kind === 'dipBreak') { // 그 나라가 속한 동맹을 해체한다
+        if (!getNationGroup(n)) return { ok: false, why: 'noally' };
+        endAllianceWithTarget(n.id);
+        fxAdd('curse', at.x, at.y);
+      } else if (kind === 'dipRelease') { // 식민지를 누르면 종주국에게서 풀려난다
+        if (!isSubject(n)) return { ok: false, why: 'nocolony' };
+        const ov = nations[n.overlordId];
+        freeColony(n);
+        logEvent(`${ov.name}이(가) ${n.name}을(를) 독립시켜 주었다.`, 'good');
+        linkFx(ov, n, 'free');
+      } else return { ok: false, why: 'outside' };
     }
     if (selected >= 0) computeSelectionBorder();
     updateUI();
-    return { ok: true, name: n ? n.name : '' };
+    return res;
   }
 
-  function startWarButton() {
-    if (selected < 0 || targetId < 0) return;
-    forceWarBetween(selected, targetId);
+  // 외교 권능에서 먼저 고른 나라: 금빛 테두리가 깜빡인다
+  function drawPowerPick() {
+    if (powerPick < 0) return;
+    if (!nations[powerPick]?.alive) { setPowerPick(-1); window.dispatchEvent(new CustomEvent('wf:power', { detail: { kind: activePower, ok: true, step: 0 } })); return; }
+    const now = performance.now();
+    if (!pickPath || now - pickPathAt > 600) { pickPath = nationBorderPath(powerPick); pickPathAt = now; } // 영토가 변하므로 가끔 다시 만든다
+    const pulse = 0.55 + 0.45 * Math.sin(now / 170);
+    ctx.save();
+    ctx.translate(camera.x, camera.y);
+    ctx.scale(camera.zoom, camera.zoom);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = `rgba(30,18,8,${0.75})`;
+    ctx.lineWidth = 6.5 / camera.zoom;
+    ctx.stroke(pickPath);
+    ctx.strokeStyle = `rgba(255,224,130,${0.55 + 0.45 * pulse})`;
+    ctx.lineWidth = (2.6 + 1.4 * pulse) / camera.zoom;
+    ctx.stroke(pickPath);
+    ctx.restore();
+  }
+
+  // 권능을 켠 채 마우스를 지도 위에 올리면: 닿는 범위를 원으로 보여 준다 (터치 화면에는 마우스가 없으므로 안 그린다)
+  let aim = null; // { x, y } 화면 좌표
+  function drawAim() {
+    if (!activePower || !aim || dragging) return;
+    const cells = POWER_RADIUS[activePower] || 0;
+    const r = cells ? Math.max(8, cells * camera.zoom) : 11;
+    const now = performance.now();
+    ctx.save();
+    ctx.translate(aim.x, aim.y);
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = 'rgba(20,12,6,.55)';
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.rotate(now / 2600);
+    ctx.setLineDash(cells ? [10, 7] : []);
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = 'rgba(255,227,160,.95)';
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    if (cells) {
+      ctx.fillStyle = 'rgba(255,227,160,.95)';
+      ctx.beginPath(); ctx.arc(0, 0, 2.2, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
   }
 
   function openModal() {
@@ -3928,12 +4100,11 @@
       owner[idx(x, y)] = id;
     }
     nation.cities.push({ x, y, name: `${nation.name} 수도`, capital: true, level: 3, resource: pickResource(), holy: true });
-    selected = id;
-    computeSelectionBorder();
     closeModal();
     logEvent(`${nation.name}이(가) 세계에 등장했다.`, 'god');
+    fxAdd('spawn', x + 0.5, y + 0.5);
     renderWorld();
-    updateUI();
+    setSelected(id);
   }
 
   function gameLoop(t) {
@@ -4046,8 +4217,7 @@
           const res = applyPower(activePower, e.clientX, e.clientY);
           window.dispatchEvent(new CustomEvent('wf:power', { detail: Object.assign({ kind: activePower, x: e.clientX, y: e.clientY }, res) }));
         } else if (i < 0 || owner[i] < 0) {
-          selected = -1;
-          updateUI();
+          setSelected(-1);
         } else {
           selectAt(e.clientX, e.clientY);
         }
@@ -4069,6 +4239,10 @@
     isDistanceZooming = false;
     canvas.classList.remove('dragging');
   });
+
+  // 조준 원(drawAim)을 위한 마우스 위치. 터치는 손가락을 떼면 사라지므로 마우스만 따라간다.
+  canvas.addEventListener('pointermove', e => { aim = e.pointerType === 'mouse' ? { x: e.clientX, y: e.clientY } : null; });
+  canvas.addEventListener('pointerleave', () => { aim = null; });
 
   // 4. PC용 마우스 휠 확대/축소 이벤트 (기존과 동일하게 유지)
   canvas.addEventListener('wheel', e => {
@@ -4098,8 +4272,8 @@
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
     if (document.body.classList.contains('modal-open')) return;
     if (e.code === 'Space') {
-      paused = !paused;
-      ui.pause.textContent = paused ? '▶' : 'Ⅱ';
+      e.preventDefault(); // 방금 누른 버튼이 다시 눌리지 않게
+      setPaused(!paused);
     }
     if (e.key === 'r' || e.key === 'R') {
       if (confirm('새로운 세계를 만들까요?')) {
@@ -4107,64 +4281,27 @@
         resetWorld();
       }
     }
-    if (e.key === '1') speed = 1;
-    if (e.key === '2') speed = 5;
-    if (e.key === '3') speed = 20;
-    if (e.key === '4') speed = 100;
-    if (e.key === 'Escape') {
-      selected = -1;
-      updateUI();
-    }
+    if (e.key >= '1' && e.key <= String(SPEEDS.length)) setSpeed(SPEEDS[Number(e.key) - 1]);
+    if (e.key === 'Escape' && !activePower) setSelected(-1); // 권능이 켜져 있으면 Esc는 권능 해제 (powers.js)
   });
 
   document.getElementById('addNation').onclick = openModal;
   document.getElementById('cancelModal').onclick = closeModal;
   document.getElementById('createNationBtn').onclick = addNationFromModal;
-  document.getElementById('pause').onclick = () => { paused = !paused; ui.pause.textContent = paused ? '▶' : 'Ⅱ'; };
-  document.querySelectorAll('.speed').forEach(btn => {
-    btn.onclick = () => {
-      speed = Number(btn.dataset.speed);
-      document.querySelectorAll('.speed').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    };
-  });
-  document.querySelectorAll('.layer').forEach(btn => {
-    btn.onclick = () => {
-      layer = btn.dataset.layer;
-      document.querySelectorAll('.layer').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderWorld();
-    };
-  });
+  document.getElementById('pause').onclick = () => setPaused(!paused);
+  document.querySelectorAll('.speed').forEach(btn => { btn.onclick = () => setSpeed(Number(btn.dataset.speed)); });
 
-  document.getElementById('renameBtn').onclick = () => {
-    if (selected >= 0) {
+  const doRename = () => {
+    if (selected >= 0 && ui.renameInput.value.trim()) {
       renameNation(nations[selected], ui.renameInput.value);
       ui.renameInput.value = '';
+      renderWorld(); // 지도 위의 이름표도 바로 바꾼다
       updateUI();
     }
   };
-
-  document.getElementById('popUp').onclick = () => { if (selected >= 0) { bless('pop', nations[selected]); updateUI(); } };
-  document.getElementById('popDown').onclick = () => { if (selected >= 0) { bless('cursePop', nations[selected]); updateUI(); } };
-  document.getElementById('armyUp').onclick = () => { if (selected >= 0) { bless('army', nations[selected]); updateUI(); } };
-  document.getElementById('armyDown').onclick = () => { if (selected >= 0) { bless('curseArmy', nations[selected]); updateUI(); } };
-  document.getElementById('goldUp').onclick = () => { if (selected >= 0) { bless('gold', nations[selected]); updateUI(); } };
-  document.getElementById('goldDown').onclick = () => { if (selected >= 0) { bless('curseGold', nations[selected]); updateUI(); } };
-  document.getElementById('techUp').onclick = () => { if (selected >= 0) { bless('tech', nations[selected]); updateUI(); } };
-  document.getElementById('techDown').onclick = () => { if (selected >= 0) { bless('curseTech', nations[selected]); updateUI(); } };
-  document.getElementById('quake').onclick = () => { if (selected >= 0) { disaster('quake', nations[selected]); updateUI(); } };
-  document.getElementById('storm').onclick = () => { if (selected >= 0) { disaster('storm', nations[selected]); updateUI(); } };
-  document.getElementById('plague').onclick = () => { if (selected >= 0) { plagueNation(nations[selected]); updateUI(); } };
-  document.getElementById('forceWar').onclick = () => { if (selected >= 0) forceWar(); };
-  document.getElementById('forcePeace').onclick = () => { if (selected >= 0) forcePeace(); };
-  document.getElementById('collapse').onclick = () => {
-    if (selected >= 0 && confirm(`${nations[selected].name}을 정말로 역사에서 지울까요?`)) {
-      collapseNation(nations[selected]);
-      selected = -1;
-      updateUI();
-    }
-  };
+  document.getElementById('renameBtn').onclick = doRename;
+  ui.renameInput.addEventListener('keydown', e => { if (e.key === 'Enter') doRename(); });
+  document.getElementById('leftClose').onclick = () => setSelected(-1);
 
   // ===== 저장 / 불러오기 (직렬화) =====
   // 같은 값이 이어지는 구간을 숫자 하나((값+1)*4096+길이)로 압축한다. 지형은 시드로 다시 만들므로 저장하지 않는다.
@@ -4233,11 +4370,13 @@
     });
 
     selected = -1;
-    targetId = -1;
     selectionBorder = [];
     selectionPath = null;
     warArrows = [];
     deathFx = [];
+    worldEpoch++;
+    setPowerPick(-1);
+    if (window.WFFx) window.WFFx.clear();
     orderTimers.clear();
     needsClaimFix = false;
     provSyncNeeded = false;
@@ -4246,7 +4385,7 @@
     baseDirty = true;
     refreshMilitaryUnits();
     fitCamera();
-    document.querySelectorAll('.layer').forEach(b => b.classList.toggle('active', b.dataset.layer === layer));
+    viewChanged();
     logEvent('저장된 세계를 불러왔다.', 'god');
     renderWorld();
     updateUI();
@@ -4261,12 +4400,22 @@
 
   function setPaused(v) {
     paused = !!v;
-    ui.pause.textContent = paused ? '▶' : 'Ⅱ';
+    ui.pause.innerHTML = icon(paused ? 'play' : 'pause') || (paused ? '▶' : 'Ⅱ');
+    ui.pause.classList.toggle('active', paused);
   }
 
+  // 게임 속도 단계. 상단 바의 버튼(index.html의 .speed)과 숫자 단축키 1~5가 이 값을 쓴다.
+  const SPEEDS = [0.5, 1, 1.5, 2, 4];
   function setSpeed(v) {
     speed = v;
     document.querySelectorAll('.speed').forEach(b => b.classList.toggle('active', Number(b.dataset.speed) === v));
+  }
+
+  function setLayer(id) {
+    if (!['political', 'alliance', 'species', 'religion'].includes(id) || id === layer) return;
+    layer = id;
+    renderWorld();
+    viewChanged();
   }
 
   // 홈 화면(menu.js)이 쓰는 인터페이스
@@ -4287,45 +4436,25 @@
     setPaused,
     isPaused: () => paused,
     isStarted: () => gameStarted,
-    // 신의 권능 도구 (powers.js): null이면 살펴보기(국가 선택)
-    setPower(kind) { activePower = kind || null; canvas.classList.toggle('power', !!activePower); },
+    // 신의 권능 도구 (powers.js): null이면 보기(국가를 눌러 정보 확인)
+    setPower(kind) { activePower = kind || null; setPowerPick(-1); canvas.classList.toggle('power', !!activePower); },
     getPower: () => activePower,
+    // 보기 탭: 지도 모드('political' 국가 · 'alliance' 연맹 · 'species' 종족 · 'religion' 종교)와 군대 표시
+    setLayer,
+    getLayer: () => layer,
+    setShowArmies(v) { view.armies = !!v; try { localStorage.setItem(VIEW_KEY, JSON.stringify(view)); } catch (e) {} viewChanged(); },
+    getShowArmies: () => view.armies,
+    select: setSelected,
     // 디버그용: 살아 있는 국가의 요약 (군대 점 수, 구역 수 등)
     nationStats: () => nations.filter(n => n.alive).map(n => ({ name: n.name, army: Math.round(n.army), dots: dotCountOf(n.id), provs: provinceCount(n.id), tech: +n.tech.toFixed(1), pw: n.pw, pop: Math.round(n.population) }))
   };
-
-  ui.relationTarget.onchange = () => { targetId = Number(ui.relationTarget.value); };
-  document.getElementById('makeAlliance').onclick = () => { if (selected >= 0 && targetId >= 0) createAllianceBetween(selected, targetId); };
-  document.getElementById('breakAlliance').onclick = () => { if (selected >= 0) destroyAllianceForSelected(); };
-  document.getElementById('startWar').onclick = () => { startWarButton(); };
-  document.getElementById('colonize').onclick = () => {
-    if (selected < 0 || targetId < 0) return;
-    const ov = nations[selected], c = nations[targetId];
-    if (!ov?.alive || !c?.alive) return;
-    if (!rules.colonies) { logEvent('설정에서 식민지 시스템이 꺼져 있다.', 'bad'); return; }
-    if (isSubject(c) || isSubject(ov)) { logEvent('이미 종속 관계에 있는 나라는 식민지로 삼을 수 없다.', 'bad'); return; }
-    if (findWar(ov.id, c.id) || !(ov.power >= c.power * 1.2 || ov.tech >= c.tech * 1.2)) {
-      logEvent(`${ov.name}은(는) ${c.name}을(를) ${colonyWord()}로 삼기에는 국력·기술 격차가 부족하다.`, 'bad');
-      return;
-    }
-    makeColony(c, ov, `${ov.name}이(가) ${c.name}을(를) ${colonyWord()}로 삼았다.`);
-    updateUI();
-  };
-  document.getElementById('releaseColony').onclick = () => {
-    if (selected < 0 || targetId < 0) return;
-    const c = nations[targetId];
-    if (!c?.alive || c.overlordId !== selected) { logEvent('선택한 나라의 식민지가 아니다.', 'bad'); return; }
-    freeColony(c);
-    logEvent(`${nations[selected].name}이(가) ${c.name}을(를) 독립시켜 주었다.`, 'good');
-    updateUI();
-  };
-  document.getElementById('makePeace').onclick = () => { if (selected >= 0 && targetId >= 0) makePeace(selected, targetId); };
 
   window.addEventListener('wf-lang', () => { advCache.clear(); buildNationLabels(); updateUI(); });
   canvas.width = W;
   canvas.height = H;
   resetWorld();
-  setSpeed(5); // 홈 화면 뒤에서 도는 데모 세계
+  setPaused(false);
+  setSpeed(4); // 홈 화면 뒤에서 도는 데모 세계
   requestAnimationFrame(draw);
   requestAnimationFrame(gameLoop);
 })();
