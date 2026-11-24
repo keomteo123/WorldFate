@@ -991,7 +991,44 @@
       for (const p of provinces) if (p.owner >= 0) for (const c of p.cells) owner[c] = p.owner;
     }
     for (const p of provinces) p.origOwner = p.owner;
+    freeBorders();
     provVersion++;
+  }
+
+  // 자유 국경: 구역 경계가 그대로 국경이 되면 반듯한 다각형이 된다. 땅 위에서 부드럽게 일렁이는 잡음으로 국경 근처의 칸 소유를 살짝 옮겨
+  // 강 · 능선처럼 구불구불한 자연스러운 국경을 만든다 (구역 단위 게임 규칙은 그대로, 눈에 보이는 영토 모양만 달라진다).
+  function wiggle(x, y, cell, salt) {
+    const gx = x / cell, gy = y / cell, x0 = Math.floor(gx), y0 = Math.floor(gy);
+    const fx = gx - x0, fy = gy - y0, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const h = (a, b) => hash2(a + salt * 977, b - salt * 313);
+    const top = h(x0, y0) + (h(x0 + 1, y0) - h(x0, y0)) * sx;
+    const bot = h(x0, y0 + 1) + (h(x0 + 1, y0 + 1) - h(x0, y0 + 1)) * sx;
+    return (top + (bot - top) * sy) * 2 - 1;
+  }
+  function freeBorders() {
+    const N = MAP_W * MAP_H, src = new Int16Array(owner);
+    for (let y = 1; y < MAP_H - 1; y++) {
+      for (let x = 1; x < MAP_W - 1; x++) {
+        const i = y * MAP_W + x;
+        if (!land[i] || src[i] < 0) continue;
+        // 가까이에 다른 나라가 없으면 건너뛴다 (빠른 검사)
+        const o = src[i];
+        let near = false;
+        for (let dy = -7; dy <= 7 && !near; dy += 7) for (let dx = -7; dx <= 7; dx += 7) {
+          const xx = x + dx, yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= MAP_W || yy >= MAP_H) continue;
+          const j = yy * MAP_W + xx;
+          if (land[j] && src[j] >= 0 && src[j] !== o) { near = true; break; }
+        }
+        if (!near) continue;
+        const ox = wiggle(x, y, 46, 1) * 7 + wiggle(x, y, 17, 2) * 3;
+        const oy = wiggle(x, y, 46, 3) * 7 + wiggle(x, y, 17, 4) * 3;
+        const sxp = Math.round(x + ox), syp = Math.round(y + oy);
+        if (sxp < 0 || syp < 0 || sxp >= MAP_W || syp >= MAP_H) continue;
+        const j = syp * MAP_W + sxp;
+        if (land[j] && src[j] >= 0) owner[i] = src[j];
+      }
+    }
   }
 
   // raw[칸] = 구역 그룹 번호(없으면 -1). 빈 그룹은 건너뛰고 번호를 다시 매겨 provinces / provOf 를 만든다.
@@ -1125,8 +1162,10 @@
   let territoryDirty = false;
   let lastTerritorySync = 0;
 
+  // 식민지가 종주국에 보낸 파병(levyOut)은 종주국의 병력(levyIn)으로 센다
+  const armyEff = n => Math.max(1, (n.army || 0) + (n.levyIn || 0) - (n.levyOut || 0));
   function dotsFor(n) {
-    return clamp(Math.round((n.army || 0) / ARMY_PER_DOT), 1, MAX_DOTS_PER_NATION);
+    return clamp(Math.round(armyEff(n) / ARMY_PER_DOT), 1, MAX_DOTS_PER_NATION);
   }
 
   function dotCountOf(id) {
@@ -1283,8 +1322,9 @@
   const worldImage = wctx.createImageData(MAP_W, MAP_H);
   const baseData = new Uint8ClampedArray(MAP_W * MAP_H * 4);
   const iconCanvas = document.createElement('canvas');
-  iconCanvas.width = MAP_W;
-  iconCanvas.height = MAP_H;
+  const ICON_SCALE = 2;                       // 산 · 숲 아이콘은 2배 해상도로 그려 확대해도 또렷하다
+  iconCanvas.width = MAP_W * ICON_SCALE;
+  iconCanvas.height = MAP_H * ICON_SCALE;
   let baseDirty = true;
   let nationLabels = [];
 
@@ -1401,7 +1441,9 @@
 
     // 산·숲·사막 아이콘 (투명 캔버스에 한 번만 그림)
     const ic = iconCanvas.getContext('2d');
-    ic.clearRect(0, 0, MAP_W, MAP_H);
+    ic.setTransform(1, 0, 0, 1, 0, 0);
+    ic.clearRect(0, 0, iconCanvas.width, iconCanvas.height);
+    ic.setTransform(ICON_SCALE, 0, 0, ICON_SCALE, 0, 0);
     ic.lineJoin = 'round';
     ic.lineCap = 'round';
 
@@ -1466,48 +1508,98 @@
     return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
   }
 
-  // 국경선: 서로 다른 나라 땅이 맞닿은 칸 경계를 이어 붙여 벡터 경로로 만든다 (확대해도 또렷하게, 전쟁 중인 국경은 붉게)
-  let borderPath = null, warBorderPath = null;
+  // 국경선: 칸 경계를 이어 붙인 뒤 부드러운 곡선으로 다듬는다 (계단 모양 없이 확대해도 매끈하게, 전쟁 중인 국경은 붉게).
+  // edgeKind(i, j) → 0(선 없음) | 종류 번호. i = 칸, j = 이웃 칸(지도 밖이면 -1). 같은 선을 두 번 긋지 않게 i < j 쌍이나 지도 가장자리만 부른다.
+  const VW = MAP_W + 1;
+  let tNbr = null, tKind = null, tDirty = false;
+  function traceSmooth(edgeKind, kinds, x0 = 0, y0 = 0, x1 = MAP_W - 1, y1 = MAP_H - 1, passes = 6) {
+    const V = VW * (MAP_H + 1);
+    if (!tNbr) { tNbr = new Int32Array(V * 4); tKind = new Uint8Array(V * 4); } else if (tDirty) tKind.fill(0);
+    tDirty = true;
+    const touched = [];
+    // 슬롯: 0 오른쪽, 1 아래, 2 왼쪽, 3 위
+    const add = (u, v, du, k) => { touched.push(u, v); tNbr[u * 4 + du] = v; tKind[u * 4 + du] = k; tNbr[v * 4 + ((du + 2) & 3)] = u; tKind[v * 4 + ((du + 2) & 3)] = k; };
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const i = y * MAP_W + x;
+        if (x < MAP_W - 1) { const k = edgeKind(i, i + 1); if (k) add(y * VW + x + 1, (y + 1) * VW + x + 1, 1, k); }
+        if (y < MAP_H - 1) { const k = edgeKind(i, i + MAP_W); if (k) add((y + 1) * VW + x, (y + 1) * VW + x + 1, 0, k); }
+        if (x === 0) { const k = edgeKind(i, -1); if (k) add(y * VW, (y + 1) * VW, 1, k); }
+        if (y === 0) { const k = edgeKind(i, -1); if (k) add(x, x + 1, 0, k); }
+        if (x === MAP_W - 1) { const k = edgeKind(i, -1); if (k) add(y * VW + MAP_W, (y + 1) * VW + MAP_W, 1, k); }
+        if (y === MAP_H - 1) { const k = edgeKind(i, -1); if (k) add(MAP_H * VW + x, MAP_H * VW + x + 1, 0, k); }
+      }
+    }
+    const out = kinds.map(() => new Path2D());
+    const kindIdx = new Map(kinds.map((k, n) => [k, n]));
+    const deg = v => (tKind[v * 4] ? 1 : 0) + (tKind[v * 4 + 1] ? 1 : 0) + (tKind[v * 4 + 2] ? 1 : 0) + (tKind[v * 4 + 3] ? 1 : 0);
+    const isNode = v => {
+      if (deg(v) !== 2) return true;
+      let first = 0;
+      for (let d = 0; d < 4; d++) if (tKind[v * 4 + d]) { if (!first) first = tKind[v * 4 + d]; else if (tKind[v * 4 + d] !== first) return true; }
+      return false;
+    };
+    const walk = (v0, d0) => {
+      const k = tKind[v0 * 4 + d0], xs = [v0 % VW], ys = [Math.floor(v0 / VW)];
+      let v = v0, d = d0, closed = false;
+      for (;;) {
+        const nv = tNbr[v * 4 + d];
+        tKind[v * 4 + d] = 0; tKind[nv * 4 + ((d + 2) & 3)] = 0;
+        xs.push(nv % VW); ys.push(Math.floor(nv / VW));
+        if (nv === v0) { closed = true; break; }
+        // 같은 종류로 이어지는 다음 슬롯
+        let nd = -1;
+        if (!isNode(nv)) for (let t = 0; t < 4; t++) if (tKind[nv * 4 + t]) { nd = t; break; }
+        if (nd < 0) break;
+        v = nv; d = nd;
+      }
+      return { k, xs, ys, closed };
+    };
+    const draw = c => {
+      const n = c.xs.length;
+      if (n < 2) return;
+      const px = Float32Array.from(c.xs), py = Float32Array.from(c.ys);
+      const tx = new Float32Array(n), ty = new Float32Array(n);
+      const last = c.closed ? n - 1 : n; // 닫힌 선은 마지막 점이 첫 점과 같다
+      for (let pass = 0; pass < passes; pass++) {
+        for (let i = 0; i < last; i++) {
+          if (!c.closed && (i === 0 || i === n - 1)) { tx[i] = px[i]; ty[i] = py[i]; continue; }
+          const a = i === 0 ? last - 1 : i - 1, b = i === last - 1 ? (c.closed ? 0 : i + 1) : i + 1;
+          tx[i] = px[a] * 0.25 + px[i] * 0.5 + px[b] * 0.25;
+          ty[i] = py[a] * 0.25 + py[i] * 0.5 + py[b] * 0.25;
+        }
+        for (let i = 0; i < last; i++) { px[i] = tx[i]; py[i] = ty[i]; }
+        if (c.closed) { px[n - 1] = px[0]; py[n - 1] = py[0]; }
+      }
+      const path = out[kindIdx.get(c.k)];
+      path.moveTo(px[0], py[0]);
+      for (let i = 1; i < n; i += (i < n - 2 ? 2 : 1)) path.lineTo(px[i], py[i]);
+      if (c.closed) path.closePath();
+    };
+    // 끝점·분기점에서 출발하는 선 → 남은 닫힌 고리
+    for (let t = 0; t < touched.length; t++) {
+      const v = touched[t];
+      for (let d = 0; d < 4; d++) if (tKind[v * 4 + d] && isNode(v)) draw(walk(v, d));
+    }
+    for (let t = 0; t < touched.length; t++) {
+      const v = touched[t];
+      for (let d = 0; d < 4; d++) if (tKind[v * 4 + d]) draw(walk(v, d));
+    }
+    tDirty = false;
+    return out;
+  }
+
+  let borderPath = null, warBorderPath = null, innerPath = null;
   function buildBorderPaths() {
     const warPairs = new Set();
     for (const w of wars) if (w.active) { warPairs.add(w.a * 8192 + w.b); warPairs.add(w.b * 8192 + w.a); }
-    const kindOf = (a, b) => {
-      if (a === b) return 0;
-      if (a < 0 || b < 0) return 1;
-      return warPairs.has(a * 8192 + b) ? 2 : 1;
+    const kind = (i, j) => {
+      if (j < 0 || !land[i] || !land[j]) return 0;
+      const a = owner[i], b = owner[j];
+      if (a !== b) return a < 0 || b < 0 ? 1 : (warPairs.has(a * 8192 + b) ? 2 : 1);
+      return provOf[i] !== provOf[j] && a >= 0 ? 3 : 0;
     };
-    const paths = [null, new Path2D(), new Path2D()];
-    const vStart = new Int32Array(MAP_W + 1).fill(-1), vKind = new Uint8Array(MAP_W + 1);
-    const flushV = (x, y) => {
-      if (vStart[x] >= 0) { paths[vKind[x]].moveTo(x, vStart[x]); paths[vKind[x]].lineTo(x, y); vStart[x] = -1; vKind[x] = 0; }
-    };
-    for (let y = 0; y < MAP_H; y++) {
-      let hStart = -1, hKind = 0;
-      for (let x = 0; x < MAP_W; x++) {
-        const i = y * MAP_W + x;
-        const isLand = land[i] === 1;
-        const o = isLand ? owner[i] : -2;
-        // 아래쪽 경계(수평선)
-        let kh = 0;
-        if (isLand && y < MAP_H - 1 && land[i + MAP_W]) kh = kindOf(o, owner[i + MAP_W]);
-        if (kh !== hKind) {
-          if (hKind) { paths[hKind].moveTo(hStart, y + 1); paths[hKind].lineTo(x, y + 1); }
-          hStart = x; hKind = kh;
-        }
-        // 오른쪽 경계(수직선)
-        let kv = 0;
-        if (isLand && x < MAP_W - 1 && land[i + 1]) kv = kindOf(o, owner[i + 1]);
-        const bx = x + 1;
-        if (kv !== vKind[bx]) {
-          flushV(bx, y);
-          if (kv) { vStart[bx] = y; vKind[bx] = kv; }
-        }
-      }
-      if (hKind) { paths[hKind].moveTo(hStart, y + 1); paths[hKind].lineTo(MAP_W, y + 1); }
-    }
-    for (let x = 0; x <= MAP_W; x++) flushV(x, MAP_H);
-    borderPath = paths[1];
-    warBorderPath = paths[2];
+    [borderPath, warBorderPath, innerPath] = traceSmooth(kind, [1, 2, 3]);
   }
 
   function drawBorders() {
@@ -1518,6 +1610,11 @@
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     const core = clamp(1.3 + camera.zoom * 0.45, 1.5, 3.4) / camera.zoom;
+    if (innerPath && camera.zoom >= 0.7) { // 같은 나라 안의 구역선: 가늘고 옅게
+      ctx.strokeStyle = 'rgba(74,50,30,0.32)';
+      ctx.lineWidth = 0.9 / camera.zoom;
+      ctx.stroke(innerPath);
+    }
     ctx.strokeStyle = 'rgba(255,246,222,0.6)';
     ctx.lineWidth = core * 2.6;
     ctx.stroke(borderPath);
@@ -1574,32 +1671,10 @@
 
         count[id]++; sumX[id] += x; sumY[id] += y;
 
-        // 국경: 인접한 다른 영토(육지)와 맞닿은 칸을 국가색의 어두운 톤으로
-        let edge = false;
-        if (x > 0 && land[i - 1] && owner[i - 1] !== id) edge = true;
-        else if (x < MAP_W - 1 && land[i + 1] && owner[i + 1] !== id) edge = true;
-        else if (y > 0 && land[i - MAP_W] && owner[i - MAP_W] !== id) edge = true;
-        else if (y < MAP_H - 1 && land[i + MAP_W] && owner[i + MAP_W] !== id) edge = true;
-        if (edge) {
-          const c = tint.rgb;
-          data[p] = data[p] * 0.25 + c[0] * 0.3 + INK[0] * 0.45;
-          data[p + 1] = data[p + 1] * 0.25 + c[1] * 0.3 + INK[1] * 0.45;
-          data[p + 2] = data[p + 2] * 0.25 + c[2] * 0.3 + INK[2] * 0.45;
-        } else {
-          // 같은 나라 안의 구역 경계는 옅은 잉크선으로
-          const pv = provOf[i];
-          if ((x > 0 && land[i - 1] && provOf[i - 1] !== pv) || (x < MAP_W - 1 && land[i + 1] && provOf[i + 1] !== pv) ||
-              (y > 0 && land[i - MAP_W] && provOf[i - MAP_W] !== pv) || (y < MAP_H - 1 && land[i + MAP_W] && provOf[i + MAP_W] !== pv)) {
-            data[p] = data[p] * 0.8 + INK[0] * 0.2;
-            data[p + 1] = data[p + 1] * 0.8 + INK[1] * 0.2;
-            data[p + 2] = data[p + 2] * 0.8 + INK[2] * 0.2;
-          }
-        }
       }
     }
 
     wctx.putImageData(worldImage, 0, 0);
-    wctx.drawImage(iconCanvas, 0, 0);
     buildBorderPaths();
 
     buildNationLabels();
@@ -1623,6 +1698,7 @@
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(worldCanvas, camera.x, camera.y, MAP_W * camera.zoom, MAP_H * camera.zoom);
+    ctx.drawImage(iconCanvas, camera.x, camera.y, MAP_W * camera.zoom, MAP_H * camera.zoom);
 
     drawBorders();
     drawMapFrame();
@@ -1654,20 +1730,25 @@
         const sx = camera.x + (c.x + 0.5) * camera.zoom;
         const sy = camera.y + (c.y + 0.5) * camera.zoom;
         if (sx < -30 || sy < -30 || sx > W + 30 || sy > H + 30) continue;
-        ctx.strokeStyle = '#3a2716';
         ctx.lineWidth = 1.4;
-        if (c.capital) { // 수도: 잉크 테두리의 성채 표식
-          ctx.fillStyle = '#f3dc92';
-          ctx.fillRect(sx - 4, sy - 4, 8, 8);
-          ctx.strokeRect(sx - 4, sy - 4, 8, 8);
+        ctx.fillStyle = 'rgba(30,20,10,0.3)';
+        ctx.beginPath(); ctx.ellipse(sx, sy + (c.capital ? 5.6 : 3.4), c.capital ? 6.2 : 3.6, c.capital ? 2.6 : 1.5, 0, 0, Math.PI * 2); ctx.fill();
+        if (c.capital) { // 수도: 금빛 원판 위의 별
+          ctx.strokeStyle = '#3a2716';
+          ctx.fillStyle = '#f6e3a1';
+          ctx.beginPath(); ctx.arc(sx, sy, 5.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(sx, sy, 4.1, 0, Math.PI * 2); ctx.stroke();
           ctx.fillStyle = '#3a2716';
-          ctx.fillRect(sx - 1.5, sy - 1.5, 3, 3);
-        } else {
-          ctx.fillStyle = '#f1e6c8';
           ctx.beginPath();
-          ctx.arc(sx, sy, 2.6, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
+          for (let k = 0; k < 10; k++) { const rr = k % 2 ? 1.5 : 3.3, a = -Math.PI / 2 + k * Math.PI / 5; ctx.lineTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr); }
+          ctx.closePath(); ctx.fill();
+        } else {
+          ctx.strokeStyle = '#3a2716';
+          ctx.fillStyle = '#f6ecd0';
+          ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#3a2716';
+          ctx.beginPath(); ctx.arc(sx, sy, 1, 0, Math.PI * 2); ctx.fill();
         }
         if (camera.zoom > 1.2) {
           ctx.textAlign = 'left';
@@ -1885,7 +1966,7 @@
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
     const z = camera.zoom;
-    const alpha = z > 3.2 ? 0.45 : 0.82;
+    const alpha = z > 3.2 ? 0.4 : 0.64;
     for (const l of nationLabels) {
       const px = l.size * z;
       if (px < 7) continue;
@@ -1893,8 +1974,8 @@
       if (sx < -rr || sy < -rr || sx > W + rr || sy > H + rr) continue;
       ctx.font = `bold ${px}px ${LABEL_FONT}`;
       ctx.globalAlpha = alpha;
-      ctx.lineWidth = Math.max(1.5, px * 0.14);
-      ctx.strokeStyle = 'rgba(244,232,198,0.55)';
+      ctx.lineWidth = Math.max(1.2, px * 0.085);
+      ctx.strokeStyle = 'rgba(248,238,208,0.7)';
       ctx.fillStyle = '#2f1f10';
       for (const c of l.chars) {
         ctx.save();
@@ -2014,16 +2095,31 @@
       const sy = camera.y + u.y * camera.zoom;
       if (sx < -10 || sy < -10 || sx > W + 10 || sy > H + 10) continue;
 
+      const fight = u.fighting && Math.sin(t * 14 + u.spd * 9) > 0;
       ctx.fillStyle = getGroupColorForNation(n);
-      ctx.strokeStyle = u.fighting && Math.sin(t * 14 + u.spd * 9) > 0 ? '#c4281c' : '#2a1b0f';
-      if (u.sea) {
-        ctx.fillRect(sx - size * 0.9, sy - size * 0.9, size * 1.8, size * 1.8);
-        ctx.strokeRect(sx - size * 0.9, sy - size * 0.9, size * 1.8, size * 1.8);
-      } else {
+      if (u.sea) { // 배: 둥근 선체와 돛
+        const r = size * 1.05;
+        ctx.fillStyle = 'rgba(20,14,8,0.28)';
+        ctx.beginPath(); ctx.ellipse(sx, sy + r * 0.55, r * 1.1, r * 0.34, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = getGroupColorForNation(n);
+        ctx.strokeStyle = fight ? '#e2392c' : 'rgba(255,250,236,0.92)';
         ctx.beginPath();
-        ctx.arc(sx, sy, size * 0.85, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+        ctx.moveTo(sx - r * 1.05, sy + r * 0.05); ctx.quadraticCurveTo(sx, sy + r * 1.05, sx + r * 1.05, sy + r * 0.05);
+        ctx.lineTo(sx - r * 1.05, sy + r * 0.05); ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - r * 1.25); ctx.lineTo(sx + r * 0.75, sy - r * 0.1); ctx.lineTo(sx, sy - r * 0.1); ctx.closePath();
+        ctx.fill(); ctx.stroke();
+      } else { // 병력: 부드러운 그림자 위의 둥근 말, 밝은 테두리
+        const r = size * 0.85;
+        ctx.fillStyle = 'rgba(20,14,8,0.25)';
+        ctx.beginPath(); ctx.ellipse(sx + 0.4, sy + r * 0.45, r * 1.05, r * 0.7, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = getGroupColorForNation(n);
+        ctx.strokeStyle = fight ? '#e2392c' : 'rgba(255,250,236,0.92)';
+        ctx.lineWidth = fight ? 1.6 : 1.2;
+        ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.beginPath(); ctx.arc(sx - r * 0.3, sy - r * 0.3, r * 0.36, 0, Math.PI * 2); ctx.fill();
       }
     }
     ctx.restore();
@@ -2061,19 +2157,12 @@
 
   // 한 나라의 외곽선을 하나의 Path2D로 만든다 (칸마다 그림자 효과로 그리던 방식은 후반에 매우 느렸음)
   function nationBorderPath(id) {
-    const path = new Path2D();
     const provs = provinces.filter(p => p.owner === id || (p.capture && (p.capture.to === id || p.capture.from === id)));
-    for (const p of provs) {
-      for (const c of p.cells) {
-        if (owner[c] !== id) continue;
-        const x = c % MAP_W, y = (c - x) / MAP_W;
-        if (x === 0 || owner[c - 1] !== id) { path.moveTo(x, y); path.lineTo(x, y + 1); }
-        if (x === MAP_W - 1 || owner[c + 1] !== id) { path.moveTo(x + 1, y); path.lineTo(x + 1, y + 1); }
-        if (y === 0 || owner[c - MAP_W] !== id) { path.moveTo(x, y); path.lineTo(x + 1, y); }
-        if (y === MAP_H - 1 || owner[c + MAP_W] !== id) { path.moveTo(x, y + 1); path.lineTo(x + 1, y + 1); }
-      }
-    }
-    return path;
+    let x0 = MAP_W, y0 = MAP_H, x1 = 0, y1 = 0;
+    for (const p of provs) for (const c of p.cells) { const x = c % MAP_W, y = (c - x) / MAP_W; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < x0) return new Path2D();
+    const kind = (i, j) => (j < 0 ? (owner[i] === id ? 1 : 0) : ((owner[i] === id) !== (owner[j] === id) ? 1 : 0));
+    return traceSmooth(kind, [1], Math.max(0, x0 - 1), Math.max(0, y0 - 1), Math.min(MAP_W - 1, x1 + 1), Math.min(MAP_H - 1, y1 + 1))[0];
   }
 
   function computeSelectionBorder() {
@@ -2154,6 +2243,8 @@
         ${group ? `<div class="nLine">${icon('union')}<span>${escapeHTML(group.name)}</span></div>` : ''}
         ${isSubject(n) ? `<div class="nLine">${icon('fate')}<span>종주국: <b>${escapeHTML(nations[n.overlordId].name)}</b></span></div>` : ''}
         ${colonies.length ? `<div class="nLine">${icon('colonize')}<span>${colonyWord()}: ${colonies.map(c => escapeHTML(c.name)).join(', ')}</span></div>` : ''}
+        ${isSubject(n) && (n.tributeOut || n.levyOut) ? `<div class="nLine">${icon('gold')}<span><span>본국에 세금</span> <b>${Math.round(n.tributeOut || 0)}</b> · <span>파병</span> <b>${Math.round(n.levyOut || 0)}</b></span></div>` : ''}
+        ${colonies.length && (n.tributeIn || n.levyIn) ? `<div class="nLine">${icon('gold')}<span><span>세수</span> <b>+${Math.round(n.tributeIn || 0)}</b> · <span>지원군</span> <b>+${Math.round(n.levyIn || 0)}</b></span></div>` : ''}
         <div class="nLine">${icon('temple')}<span>${escapeHTML(n.religion)}${n.cities.some(c => c.holy) ? ' · 성지 보유' : ''}</span></div>
         <div class="nGrid">
           <div class="stat">인구 <b>${format(n.population)}</b></div>
@@ -2363,6 +2454,7 @@
       // 골드: 세금 수입 - (군 유지비 + 행정비 + 무역 비용). 저축은 매년 2%씩 가치가 줄어 무한정 쌓이지 않는다.
       const income = (provs * 3 + n.population * 0.02) * (0.8 + 0.2 * eraOf(n).gold) + (n.tradeIncome || 0) + (resources[n.cities[0]?.resource] || 0) * 0.8;
       const upkeep = n.army * 0.12 * (atWar ? 1.6 : 1) + provs * 1.5 + (n.tradeCost || 0);
+      n.netIncome = income - upkeep;
       n.gold = Math.max(0, (n.gold + income - upkeep) * 0.98);
       // 기술: 발전이 느리고 꾸준하다. 높을수록 더뎌지고, 안정된 부유한 나라가 더 빠르다.
       const techGain = (rand(0.004, 0.05) + Math.min(n.gold, 3000) * 0.000004) * rules.techSpeed
@@ -2392,7 +2484,7 @@
         n.army -= (n.army - desiredArmy * 1.25) * 0.08;
       }
       n.army = Math.max(1, Math.min(n.army, Math.max(n.population * 0.45, n.godArmy || 0)));
-      n.power = n.army * techMight(n);
+      n.power = armyEff(n) * techMight(n);
     }
 
     syncMilitaryUnits();
@@ -2463,7 +2555,7 @@
         logEvent(`${n.name}이(가) 역사에서 사라졌다.`, 'war');
         continue;
       }
-      n.power = n.army * techMight(n);
+      n.power = armyEff(n) * techMight(n);
     }
     for (let i = 0; i < owner.length; i++) {
       const o = owner[i];
@@ -2740,6 +2832,7 @@
 
   function freeColony(colony) {
     colony.overlordId = null;
+    colony.levyOut = 0; colony.tributeOut = 0;
     colony.isColony = false;
     colony.colonySince = undefined;
     territoryDirty = true; // 지도 색이 제 색으로 돌아온다
@@ -2810,13 +2903,26 @@
       : `${lose.name}이(가) ${win.name}의 ${colonyWord()}가 되었다.`);
   }
 
+  // 식민지의 의무: 매년 세수의 일부를 본국에 세금으로 바치고, 군대 일부를 본국 군대로 보낸다(파병).
+  // 본국이 전쟁 중이면 파병이 훨씬 늘어난다. 부담이 클수록 식민지의 불만이 쌓인다.
+  const TAX_RATE = 0.35, LEVY_PEACE = 0.15, LEVY_WAR = 0.4;
   function simulateColonies() {
+    
+    for (const n of nations) { if (n.alive) { n.levyIn = 0; n.levyOut = 0; n.tributeIn = 0; n.tributeOut = 0; } }
     for (const n of nations) {
       if (!n.alive || n.overlordId == null) continue;
       const ov = nations[n.overlordId];
       if (!ov?.alive) { freeColony(n); logEvent(`종주국이 사라져 ${n.name}이(가) 독립했다.`, 'good'); continue; }
-      const tribute = Math.min(n.gold * 0.05, 30);
+      // 세금: 순수익의 35% + 저축의 3%
+      const tribute = Math.min(n.gold * 0.5, Math.max(0, n.netIncome || 0) * TAX_RATE + n.gold * 0.03);
       n.gold -= tribute; ov.gold += tribute;
+      n.tributeOut = tribute; ov.tributeIn = (ov.tributeIn || 0) + tribute;
+      // 파병
+      const ovWar = wars.some(w => w.active && (w.a === ov.id || w.b === ov.id));
+      const levy = Math.min(n.army * (ovWar ? LEVY_WAR : LEVY_PEACE), Math.max(0, n.army - 4));
+      n.levyOut = levy; ov.levyIn = (ov.levyIn || 0) + levy;
+      // 부담이 클수록 불만이 오른다 (전쟁 파병은 더 크게)
+      n.unrest = (n.unrest || 0) + (ovWar ? 0.9 : 0.35) + tribute / Math.max(40, (n.netIncome || 0) + 40) * 0.4;
       if (year - (n.colonySince ?? year) < 15) continue;
       const weak = ov.power < n.power * 0.8 ? 0.02 : 0;
       if ((n.unrest || 0) > 40 && rand() < ((n.unrest || 0) - 40) / 400 + weak) { n.wasColonyOf = ov.id; colonyRevolt(n); }
@@ -3783,7 +3889,7 @@
 
   // 프레임 루프에서 호출: 점령이 있었으면 일정 간격으로 지도/UI를 갱신
   function syncTerritory(now) {
-    if (!territoryDirty || now - lastTerritorySync < 150) return;
+    if (!territoryDirty || now - lastTerritorySync < 260) return;
     territoryDirty = false;
     lastTerritorySync = now;
     reconcileCities();
@@ -4431,6 +4537,7 @@
       p.owner = r[0]; p.origOwner = r[1]; p.conqueredYear = r[2];
       if (p.owner >= 0) for (const c of p.cells) owner[c] = p.owner;
     });
+    freeBorders();
 
     selected = -1;
     selectionBorder = [];

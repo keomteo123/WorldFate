@@ -534,4 +534,11 @@
     ['식민지는 스스로 전쟁을 일으킬 수 없어요', "Colonies can't start wars on their own", '殖民地不能自行开战', '殖民地不能自行開戰', '植民地は自ら戦争を始められません', 'Колонии не могут сами начинать войны', 'Koloniler kendi başına savaş başlatamaz', 'Les colonies ne peuvent pas déclarer la guerre seules', 'Kolonien können nicht selbst Krieg beginnen', 'Las colonias no pueden iniciar guerras por su cuenta', 'As colónias não podem iniciar guerras sozinhas'],
     ['{0}이(가) {1} {2}을(를) 지키기 위해 참전했다.', '{0} joined the war to defend its {1} {2}.', '{0}为保卫其{1}{2}而参战。', '{0}為保衛其{1}{2}而參戰。', '{0}が{1}の{2}を守るために参戦した。', '{0} вступает в войну, чтобы защитить {2} ({1}).', '{0}, {2} ({1}) için savaşa katıldı.', '{0} entre en guerre pour défendre {2} ({1}).', '{0} tritt in den Krieg ein, um {2} ({1}) zu verteidigen.', '{0} entra en guerra para defender a {2} ({1}).', '{0} entra na guerra para defender {2} ({1}).']
   ]);
+  // ===== v1.10.0: 식민지의 세금과 파병 =====
+  I.addRows([
+    ['본국에 세금', 'Tribute to homeland', '向宗主国纳税', '向宗主國納稅', '本国へ納税', 'Дань метрополии', 'Anavatana vergi', 'Tribut à la métropole', 'Tribut ans Mutterland', 'Tributo a la metrópoli', 'Tributo à metrópole'],
+    ['파병', 'Troops sent', '派兵', '派兵', '派兵', 'Войска', 'Gönderilen asker', 'Troupes envoyées', 'Entsandte Truppen', 'Tropas enviadas', 'Tropas enviadas'],
+    ['세수', 'Tribute income', '税收', '稅收', '納税収入', 'Дань', 'Vergi geliri', 'Tribut perçu', 'Tributeinnahmen', 'Tributo recibido', 'Tributo recebido'],
+    ['지원군', 'Colonial troops', '援军', '援軍', '支援軍', 'Колон. войска', 'Koloni askeri', 'Troupes coloniales', 'Kolonialtruppen', 'Tropas coloniales', 'Tropas coloniais'],
+  ]);
 })();
