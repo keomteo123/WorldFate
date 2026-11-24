@@ -541,4 +541,44 @@
     ['세수', 'Tribute income', '税收', '稅收', '納税収入', 'Дань', 'Vergi geliri', 'Tribut perçu', 'Tributeinnahmen', 'Tributo recibido', 'Tributo recebido'],
     ['지원군', 'Colonial troops', '援军', '援軍', '支援軍', 'Колон. войска', 'Koloni askeri', 'Troupes coloniales', 'Kolonialtruppen', 'Tropas coloniales', 'Tropas coloniais'],
   ]);
+  // ===== v1.11.0: 도시 건설 · 수도 이전 · 세부 시대 =====
+  I.addRows([
+    ['도시 건설', 'Found City', '建设城市', '建設城市', '都市建設', 'Основать город', 'Şehir Kur', 'Fonder une ville', 'Stadt gründen', 'Fundar ciudad', 'Fundar cidade'],
+    ['수도 이전', 'Move Capital', '迁都', '遷都', '遷都', 'Перенести столицу', 'Başkenti Taşı', 'Déplacer la capitale', 'Hauptstadt verlegen', 'Mover la capital', 'Mover a capital'],
+    ['도시를 세울 땅을 누르세요', 'Tap land to found a city', '点击要建城的土地', '點擊要建城的土地', '都市を建てる土地をタップ', 'Нажмите на землю для города', 'Şehir kurulacak araziye dokunun', 'Touchez une terre pour fonder une ville', 'Land antippen, um eine Stadt zu gründen', 'Toca un terreno para fundar una ciudad', 'Toque em um terreno para fundar uma cidade'],
+    ['수도로 삼을 도시를 누르세요', 'Tap a city to make it the capital', '点击要定为首都的城市', '點擊要定為首都的城市', '首都にする都市をタップ', 'Нажмите на город-столицу', 'Başkent yapılacak şehre dokunun', 'Touchez la ville qui deviendra capitale', 'Stadt antippen, die Hauptstadt werden soll', 'Toca la ciudad que será capital', 'Toque na cidade que será a capital'],
+    ['그 나라의 땅이 아니에요', "That isn't the nation's land", '不是该国领土', '不是該國領土', 'その国の土地ではありません', 'Не земля этой страны', 'Bu ulusun toprağı değil', "Ce n'est pas son territoire", 'Nicht das Land dieser Nation', 'No es territorio de esa nación', 'Não é território dessa nação'],
+    ['도시가 너무 많아요', 'Too many cities', '城市太多了', '城市太多了', '都市が多すぎます', 'Слишком много городов', 'Çok fazla şehir var', 'Trop de villes', 'Zu viele Städte', 'Demasiadas ciudades', 'Cidades demais'],
+    ['다른 도시와 너무 가까워요', 'Too close to another city', '离其他城市太近', '離其他城市太近', '他の都市に近すぎます', 'Слишком близко к другому городу', 'Başka bir şehre çok yakın', 'Trop près d’une autre ville', 'Zu nah an einer anderen Stadt', 'Demasiado cerca de otra ciudad', 'Perto demais de outra cidade'],
+    ['골드가 부족해요 (40 필요)', 'Not enough gold (40 needed)', '金币不足（需要40）', '金幣不足（需要40）', 'ゴールドが足りません（40必要）', 'Не хватает золота (нужно 40)', 'Altın yetersiz (40 gerekli)', "Pas assez d'or (40 requis)", 'Nicht genug Gold (40 nötig)', 'Oro insuficiente (se necesitan 40)', 'Ouro insuficiente (40 necessários)'],
+    ['이미 지어진 도시를 눌러 주세요', 'Tap an existing city', '请点击已建成的城市', '請點擊已建成的城市', '既存の都市をタップしてください', 'Нажмите на существующий город', 'Mevcut bir şehre dokunun', 'Touchez une ville existante', 'Eine bestehende Stadt antippen', 'Toca una ciudad existente', 'Toque em uma cidade existente'],
+    ['이미 수도예요', 'Already the capital', '已经是首都', '已經是首都', 'すでに首都です', 'Уже столица', 'Zaten başkent', 'Déjà la capitale', 'Bereits Hauptstadt', 'Ya es la capital', 'Já é a capital'],
+    ['기술 +100', 'Tech +100', '科技 +100', '科技 +100', '技術 +100', 'Технологии +100', 'Teknoloji +100', 'Techno +100', 'Technik +100', 'Tecnología +100', 'Tecnologia +100'],
+    ['기술 -100', 'Tech -100', '科技 -100', '科技 -100', '技術 -100', 'Технологии -100', 'Teknoloji -100', 'Techno -100', 'Technik -100', 'Tecnología -100', 'Tecnologia -100'],
+  ]);
+  // 세부 시대 이름: 시대 + 초반/중반/후반 (30가지 조합을 만들어 넣는다)
+  (() => {
+    const ERA = {
+      '석기': ['Stone Age', '石器时代', '石器時代', '石器時代', 'Каменный век', 'Taş Çağı', 'Âge de pierre', 'Steinzeit', 'Edad de Piedra', 'Idade da Pedra'],
+      '청동기': ['Bronze Age', '青铜时代', '青銅時代', '青銅器時代', 'Бронзовый век', 'Tunç Çağı', 'Âge du bronze', 'Bronzezeit', 'Edad de Bronce', 'Idade do Bronze'],
+      '철기': ['Iron Age', '铁器时代', '鐵器時代', '鉄器時代', 'Железный век', 'Demir Çağı', 'Âge du fer', 'Eisenzeit', 'Edad de Hierro', 'Idade do Ferro'],
+      '중세': ['Medieval', '中世纪', '中世紀', '中世', 'Средневековье', 'Orta Çağ', 'Moyen Âge', 'Mittelalter', 'Edad Media', 'Idade Média'],
+      '근세': ['Early Modern', '近世', '近世', '近世', 'Раннее Новое время', 'Erken Modern', 'Époque moderne', 'Frühe Neuzeit', 'Edad Moderna', 'Idade Moderna'],
+      '산업 시대': ['Industrial', '工业时代', '工業時代', '産業時代', 'Индустриальная эра', 'Sanayi Çağı', 'Ère industrielle', 'Industriezeitalter', 'Era industrial', 'Era industrial'],
+      '현대': ['Modern', '现代', '現代', '現代', 'Современность', 'Modern Çağ', 'Époque contemporaine', 'Moderne', 'Era moderna', 'Era moderna'],
+      '정보화 시대': ['Information', '信息时代', '資訊時代', '情報化時代', 'Информационная эра', 'Bilgi Çağı', "Ère de l'information", 'Informationszeitalter', 'Era de la información', 'Era da informação'],
+      '미래': ['Future', '未来', '未來', '未来', 'Будущее', 'Gelecek', 'Futur', 'Zukunft', 'Futuro', 'Futuro']
+    };
+    const ST = { '초반': ['Early', '初期', '初期', '前期', 'начало', 'Başlangıç', 'début', 'Anfang', 'inicios', 'início'], '중반': ['Mid', '中期', '中期', '中期', 'середина', 'Orta', 'milieu', 'Mitte', 'mediados', 'meio'], '후반': ['Late', '后期', '後期', '後期', 'конец', 'Son', 'fin', 'Ende', 'finales', 'fim'] };
+    const rows = [];
+    for (const e in ERA) for (const s in ST) {
+      const E = ERA[e], S = ST[s], row = [`${e} ${s}`];
+      for (let k = 0; k < 10; k++) {
+        const cjk = k >= 1 && k <= 3; // zh-CN, zh-TW, ja
+        row.push(k === 0 ? `${S[0]} ${E[0]}` : cjk ? `${E[k]}${S[k]}` : `${E[k]} (${S[k]})`);
+      }
+      rows.push(row);
+    }
+    I.addRows(rows);
+  })();
 })();

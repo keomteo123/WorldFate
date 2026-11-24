@@ -30,13 +30,13 @@
       { id: 'popUp', icon: 'pop', name: '인구 +10%', sign: '+' },
       { id: 'armyUp', icon: 'army', name: '군대 +10%', sign: '+' },
       { id: 'goldUp', icon: 'gold', name: '골드 +20%', sign: '+' },
-      { id: 'techUp', icon: 'tech', name: '기술 +10', sign: '+' }
+      { id: 'techUp', icon: 'tech', name: '기술 +100', sign: '+' }
     ],
     curse: [
       { id: 'popDown', icon: 'pop', name: '인구 -10%', sign: '−' },
       { id: 'armyDown', icon: 'army', name: '군대 -10%', sign: '−' },
       { id: 'goldDown', icon: 'gold', name: '골드 -20%', sign: '−' },
-      { id: 'techDown', icon: 'tech', name: '기술 -10', sign: '−' }
+      { id: 'techDown', icon: 'tech', name: '기술 -100', sign: '−' }
     ],
     diplomacy: [
       { id: 'dipWar', icon: 'swords', name: '전쟁 선포', pair: true },
@@ -48,6 +48,8 @@
     ],
     fate: [
       { id: 'spawn', icon: 'spawn', name: '국가 생성', on: 'map' },
+      { id: 'buildCity', icon: 'city', name: '도시 건설' },
+      { id: 'moveCapital', icon: 'capital', name: '수도 이전' },
       { id: 'forceWar', icon: 'war', name: '전쟁 강제' },
       { id: 'forcePeace', icon: 'peace', name: '평화 강제' },
       { id: 'collapse', icon: 'collapse', name: '국가 붕괴' }
@@ -71,7 +73,13 @@
     weak: '국력·기술 격차가 부족해요',
     nocolony: '식민지가 아닌 나라예요',
     subjectAlly: '식민지는 동맹을 맺을 수 없어요',
-    subjectWar: '식민지는 스스로 전쟁을 일으킬 수 없어요'
+    subjectWar: '식민지는 스스로 전쟁을 일으킬 수 없어요',
+    foreign: '그 나라의 땅이 아니에요',
+    maxcity: '도시가 너무 많아요',
+    crowd: '다른 도시와 너무 가까워요',
+    poor: '골드가 부족해요 (40 필요)',
+    nocity: '이미 지어진 도시를 눌러 주세요',
+    already: '이미 수도예요'
   };
 
   const $ = id => document.getElementById(id);
@@ -125,6 +133,7 @@
     $('dockHintName').textContent = armed.name;
     $('dockHintPick').textContent = pick || '';
     $('dockHintText').textContent = armed.pair ? (pick ? '상대 나라를 누르세요' : '첫 번째 나라를 누르세요')
+      : armed.id === 'buildCity' ? '도시를 세울 땅을 누르세요' : armed.id === 'moveCapital' ? '수도로 삼을 도시를 누르세요'
       : armed.on === 'map' ? '지도를 눌러 발동' : '나라를 눌러 발동';
   }
 

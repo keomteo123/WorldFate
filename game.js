@@ -49,6 +49,21 @@
   ];
   const eraIndex = t => { let i = 0; for (let k = 0; k < ERAS.length; k++) if (t >= ERAS[k].at) i = k; return i; };
   const eraOf = n => ERAS[eraIndex(n.tech)];
+  // 표시용 기술 단계: 기술력은 0~1000으로 보이고(내부 값 ×10), 시대마다 초반 · 중반 · 후반으로 나뉜다.
+  // 인구 · 경제 · 군사 배수는 위의 큰 시대(ERAS) 기준 그대로다.
+  const TECH_SCALE = 10, TECH_SHOWN_MAX = 1000;
+  const ERA_BANDS = [
+    { at: 0, name: '석기' }, { at: 50, name: '청동기' }, { at: 100, name: '철기' }, { at: 150, name: '중세' }, { at: 300, name: '근세' },
+    { at: 450, name: '산업 시대' }, { at: 600, name: '현대' }, { at: 780, name: '정보화 시대' }, { at: 920, name: '미래' }
+  ];
+  const techPoints = n => Math.round(clamp(n.tech * TECH_SCALE, 0, TECH_SHOWN_MAX));
+  function eraLabel(n) {
+    const t = clamp(n.tech * TECH_SCALE, 0, TECH_SHOWN_MAX);
+    let b = 0;
+    for (let k = 0; k < ERA_BANDS.length; k++) if (t >= ERA_BANDS[k].at) b = k;
+    const s = ERA_BANDS[b].at, e = ERA_BANDS[b + 1] ? ERA_BANDS[b + 1].at : TECH_SHOWN_MAX + 0.001;
+    return `${ERA_BANDS[b].name} ${['초반', '중반', '후반'][Math.min(2, Math.floor((t - s) / (e - s) * 3))]}`;
+  }
   // 전투력 배수: 시대가 오를 때마다 1.5배씩 뛰고, 같은 시대 안에서도 기술력만큼 조금씩 오른다
   const techMight = n => Math.pow(1.5, eraIndex(n.tech)) * (1 + n.tech / 100);
 
@@ -808,6 +823,26 @@
     }
   }
 
+  // 바다와 가까운 곳(반경 6칸 안에 바다)이면 항구가 될 수 있다. 내륙에는 항구를 세우지 않는다.
+  function nearSea(x, y, r = 6) {
+    for (let dy = -r; dy <= r; dy += 2) for (let dx = -r; dx <= r; dx += 2) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= MAP_W || yy >= MAP_H) continue;
+      if (!land[yy * MAP_W + xx]) return true;
+    }
+    return false;
+  }
+  function cityKindName(x, y) {
+    const pool = nearSea(x, y) ? ['항구', '항구', '도시', '성'] : ['성', '도시', '마을', '요새'];
+    return pool[irand(0, pool.length - 1)];
+  }
+  // 예전 저장 · 시나리오에서 내륙에 있는 '항구'는 이름을 바꾼다
+  function fixInlandPorts() {
+    for (const n of nations) for (const c of n.cities || []) {
+      if (!c.capital && /항구$/.test(c.name) && !nearSea(c.x, c.y)) c.name = c.name.replace(/항구$/, ['도시', '성', '마을', '요새'][(c.x + c.y) % 4]);
+    }
+  }
+
   function generateCities() {
     for (const n of nations) {
       n.cities = [];
@@ -824,7 +859,7 @@
         for (const c of n.cities) {
           if (Math.hypot(x - c.x, y - c.y) < 9) { far = false; break; }
         }
-        if (far) n.cities.push({ x, y, name: `${n.name} ${['성','항구','도시','마을','요새'][irand(0, 4)]}`, capital: false, level: irand(1, 3), resource: pickResource(), holy: false });
+        if (far) n.cities.push({ x, y, name: `${n.name} ${cityKindName(x, y)}`, capital: false, level: irand(1, 3), resource: pickResource(), holy: false });
       }
     }
     // 처음 군대 규모도 영토 수에 맞춘다
@@ -2237,7 +2272,7 @@
           <span class="nFlag" style="background:${getGroupColorForNation(n)}"></span>
           <div class="nTitle">
             <div id="nationName">${escapeHTML((isSubject(n) ? `[${colonyWord()}] ` : '') + n.name)}</div>
-            <div class="nSub">${escapeHTML(n.species)} · ${n.ideology} · ${eraOf(n).name}${n.isRebel ? ' · 반란군' : ''}</div>
+            <div class="nSub">${escapeHTML(n.species)} · ${n.ideology} · ${eraLabel(n)}${n.isRebel ? ' · 반란군' : ''}</div>
           </div>
         </div>
         ${group ? `<div class="nLine">${icon('union')}<span>${escapeHTML(group.name)}</span></div>` : ''}
@@ -2254,7 +2289,7 @@
           <div class="stat">도시 <b>${n.cities.length}</b></div>
           <div class="stat">전쟁 <b>${relationWars}</b></div>
           <div class="stat">국력 <b>${n.power.toFixed(0)}</b></div>
-          <div class="stat">기술력 <b>${n.tech.toFixed(1)}</b></div>
+          <div class="stat">기술력 <b>${techPoints(n)}<small> / ${TECH_SHOWN_MAX}</small></b></div>
         </div>
         ${n.tradeIncome > 0.5 ? `<div class="nNote">(무역 +${n.tradeIncome.toFixed(1)} / 비용 -${(n.tradeCost || 0).toFixed(1)})</div>` : ''}
         ${meter('안정도', n.stability, 'good')}
@@ -4005,7 +4040,7 @@
   let pendingSpawn = null; // '국가 생성' 권능으로 고른 자리
   const POWER_DISASTERS = { quake: 1, storm: 1, flood: 1, drought: 1, volcano: 1, meteor: 1, lightning: 1 };
   const POWER_BLESS = { popUp: 'pop', popDown: 'cursePop', armyUp: 'army', armyDown: 'curseArmy', goldUp: 'gold', goldDown: 'curseGold', techUp: 'tech', techDown: 'curseTech' };
-  const POWER_LABEL = { popUp: '인구 +10%', popDown: '인구 -10%', armyUp: '군대 +10%', armyDown: '군대 -10%', goldUp: '골드 +20%', goldDown: '골드 -20%', techUp: '기술 +10', techDown: '기술 -10' };
+  const POWER_LABEL = { popUp: '인구 +10%', popDown: '인구 -10%', armyUp: '군대 +10%', armyDown: '군대 -10%', goldUp: '골드 +20%', goldDown: '골드 -20%', techUp: '기술 +100', techDown: '기술 -100' };
   // 두 나라를 차례로 눌러 쓰는 외교 권능 (첫 번째로 누른 나라가 '하는 쪽')
   const POWER_PAIR = { dipWar: 1, dipPeace: 1, dipAlly: 1, dipColonize: 1 };
   // 조준 원의 반지름(지도 칸). 실제로 피해가 미치는 범위(BLAST)와 같게 둔다. 홍수 · 가뭄은 나라 전체에 영향을 주므로 연출 크기만 따른다.
@@ -4126,6 +4161,14 @@
         fxAdd('collapse', at.x, at.y);
         collapseNation(n);
         if (selected === n.id) selected = -1;
+      } else if (kind === 'buildCity') { // 그 땅을 다스리는 나라가 도시를 세운다
+        const r = buildCityAt(n, x, y);
+        if (!r.ok) return r;
+        fxAdd('spawn', at.x, at.y);
+      } else if (kind === 'moveCapital') { // 이미 있는 도시를 눌러 수도로 삼는다
+        const r = moveCapitalAt(n, x, y);
+        if (!r.ok) return r;
+        fxAdd('bless', at.x, at.y, { label: '수도 이전' });
       } else if (kind === 'dipBreak') { // 그 나라가 속한 동맹을 해체한다
         if (!getNationGroup(n)) return { ok: false, why: 'noally' };
         endAllianceWithTarget(n.id);
@@ -4142,6 +4185,40 @@
     if (selected >= 0) computeSelectionBorder();
     updateUI();
     return res;
+  }
+
+  // ===== 도시 건설 · 수도 이전 =====
+  const CITY_COST = 40, CITY_MAX = 16, CITY_GAP = 9;
+  function buildCityAt(n, x, y) {
+    const i = idx(x, y);
+    if (!land[i]) return { ok: false, why: 'land' };
+    if (owner[i] !== n.id) return { ok: false, why: 'foreign' };
+    if (n.cities.length >= CITY_MAX) return { ok: false, why: 'maxcity' };
+    for (const m of nations) if (m.alive) for (const c of m.cities) if (Math.hypot(c.x - x, c.y - y) < CITY_GAP) return { ok: false, why: 'crowd' };
+    if (n.gold < CITY_COST) return { ok: false, why: 'poor' };
+    n.gold -= CITY_COST;
+    const kind = cityKindName(x, y);
+    const city = { x, y, name: `${n.name} ${kind}`, capital: false, level: 1, resource: pickResource(), holy: false };
+    n.cities.push(city);
+    n.stability = clamp(n.stability + 1, 0, 100);
+    logEvent(`${n.name}이(가) 새 ${kind === '항구' ? '항구' : '도시'}를 세웠다. (${city.name})`, 'good');
+    return { ok: true, name: n.name };
+  }
+  function moveCapitalAt(n, x, y) {
+    let best = null, bd = Math.max(6, 20 / camera.zoom);
+    for (const c of n.cities) { const d = Math.hypot(c.x - x, c.y - y); if (d < bd) { bd = d; best = c; } }
+    if (!best) return { ok: false, why: 'nocity' };
+    if (best.capital) return { ok: false, why: 'already' };
+    const old = n.cities.find(c => c.capital);
+    if (old) { old.capital = false; old.name = `${n.name} 도시`; }
+    best.capital = true;
+    best.name = `${n.name} 수도`;
+    n.capital = { x: best.x, y: best.y };
+    n.stability = clamp(n.stability - 2, 0, 100);
+    provVersion++;
+    territoryDirty = true;
+    logEvent(`${n.name}이(가) 수도를 ${best.name}(으)로 옮겼다.`, 'god');
+    return { ok: true, name: n.name };
   }
 
   // 외교 권능에서 먼저 고른 나라: 금빛 테두리가 깜빡인다
@@ -4526,6 +4603,7 @@
     layer = ['political', 'alliance', 'species', 'religion'].includes(d.layer) ? d.layer : 'political';
     initialNationCount = d.initial || Math.max(8, nations.filter(n => !n.parentId).length);
     for (const n of nations) { n.relations = n.relations || {}; n.cities = n.cities || []; }
+    fixInlandPorts();
     dropColoniesFromAlliances(); // 예전 저장: 식민지가 동맹에 들어 있을 수 있다
 
     const raw = new Int32Array(MAP_W * MAP_H);
@@ -4618,6 +4696,8 @@
     // 디버그용: 화면 좌표에 있는 나라의 이름 (없으면 null)
     nationAt(sx, sy) { const i = screenToCell(sx, sy), o = i >= 0 ? owner[i] : -1; return o >= 0 && nations[o]?.alive ? nations[o].name : null; },
     // 디버그용: 살아 있는 국가의 요약 (군대 점 수, 구역 수 등)
+    cities: name => (nations.find(n => n.alive && n.name === name)?.cities || []).map(c => ({ x: c.x, y: c.y, name: c.name, capital: !!c.capital })),
+    screenOf: (x, y) => ({ x: camera.x + (x + 0.5) * camera.zoom, y: camera.y + (y + 0.5) * camera.zoom }),
     nationStats: () => nations.filter(n => n.alive).map(n => ({ name: n.name, army: Math.round(n.army), dots: dotCountOf(n.id), provs: provinceCount(n.id), tech: +n.tech.toFixed(1), pw: n.pw, pop: Math.round(n.population) }))
   };
 
